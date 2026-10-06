@@ -233,6 +233,41 @@ component XML (loading libibus from the package), and the packaged
 IMK front end completes the compose round trip through the packaged
 bridge, the upstream daemon and the upstream simple engine.
 
+### Installer package and Homebrew Cask
+
+The integration package is also shipped as a machine-wide installer
+package, which avoids the per-user quirks of the Installer:
+
+```sh
+macos/build-pkg.sh <IBusMacOS-version-dir> IBusMacOS-1.5.35.pkg
+sudo installer -pkg IBusMacOS-1.5.35.pkg -target /
+```
+
+The layout is IBusIM.app in `/Library/Input Methods`, the bridge,
+the panel and the packaged libibus in `/usr/local/ibus-macos`, and
+the LaunchAgent in `/Library/LaunchAgents` (loaded automatically at
+the login).  The postinstall script registers the panel component in
+the ibus component directory of the detected ibus base and
+bootstraps the LaunchAgent for the console user; when no base is
+detected it prints the `--panel=` fallback for the ibus-daemon
+command line.  The real distributions replace the ad-hoc signatures
+with the Developer ID Installer certificate and notarize the
+package.  Note that the pkgbuild tool turns the com.apple.provenance
+extended attributes of the build machine into harmless `._` members
+in the payload.
+
+The Homebrew Cask in macos/ibus-macos.rb installs the same package
+through a tap, which also matches the Homebrew glib dependency of
+the package.  For the real distributions, host the tap repository
+and point the url stanza to the release artifact; for a local test,
+copy the cask into a manual tap and dry-run it:
+
+```sh
+TAP=$(brew --repository)/Library/Taps/ibus/homebrew-test
+mkdir -p $TAP/Casks && cp macos/ibus-macos.rb $TAP/Casks/
+HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask --dry-run ibus/test/ibus-macos
+```
+
 ## Known issues
 
  * The `/ibus/async-apis` test in `ibus-bus` can be flaky on macOS

@@ -46,8 +46,8 @@ fi
 ATSPI_PC=$(ls /opt/homebrew/Cellar/at-spi2-core/*/lib/pkgconfig/atk.pc \
         2>/dev/null | head -1)
 if [ -n "$ATSPI_PC" ]; then
-    export PKG_CONFIG_PATH="$(dirname "$ATSPI_PC")${
-            PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    PC_DIR="$(dirname "$ATSPI_PC")"
+    export PKG_CONFIG_PATH="$PC_DIR${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 fi
 
 cd "$SRC"

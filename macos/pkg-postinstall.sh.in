@@ -1,0 +1,49 @@
+#!/bin/sh
+# postinstall of the ibus macOS integration package.
+#
+# Registers the native macOS panel in the ibus component directory
+# of the installed ibus base and bootstraps the LaunchAgent for the
+# console user.  /Library/LaunchAgents loads the agent automatically
+# at the next login; the bootstrap only makes it effective in the
+# running session.
+
+set -e
+
+BASE=@BASE@
+SERVICE=org.freedesktop.IBus.xpc
+
+# Register the panel component in the ibus component directory of
+# the installed ibus base.
+IBUS_COMPONENT_DIR=""
+if command -v pkg-config > /dev/null 2>&1; then
+    PCPREFIX="$(pkg-config --variable=prefix ibus-1.0 2>/dev/null || true)"
+    [ -n "$PCPREFIX" ] && \
+            IBUS_COMPONENT_DIR="$PCPREFIX/share/ibus/component"
+fi
+for CANDIDATE in \
+        "$IBUS_COMPONENT_DIR" \
+        /opt/homebrew/share/ibus/component \
+        /usr/local/share/ibus/component; do
+    if [ -n "$CANDIDATE" ] && [ -d "$CANDIDATE" ]; then
+        echo "Registering the macOS panel component in $CANDIDATE"
+        sed -e "s|@libexecdir@|$BASE/bin|" \
+                "$BASE/macospanel.xml" \
+                > "$CANDIDATE/macospanel.xml"
+        break
+    fi
+done
+if [ ! -f "${CANDIDATE:-}/macospanel.xml" ]; then
+    echo "No ibus component directory found; pass the panel to the" \
+         "daemon explicitly:"
+    echo "  ibus-daemon --panel=$BASE/bin/ibus-ui-macospanel"
+fi
+
+# Bootstrap the LaunchAgent for the console user.
+CONSOLE_UID="$(stat -f %u /dev/console)"
+if [ -n "$CONSOLE_UID" ] && [ "$CONSOLE_UID" -gt 500 ]; then
+    launchctl bootout "gui/$CONSOLE_UID/$SERVICE" 2>/dev/null || true
+    launchctl bootstrap "gui/$CONSOLE_UID" \
+            "/Library/LaunchAgents/$SERVICE.plist" || true
+fi
+
+exit 0
