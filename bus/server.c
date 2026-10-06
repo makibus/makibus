@@ -28,6 +28,10 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <sys/syslimits.h>
+#include <mach-o/dyld.h>
+#endif
 
 #include "dbusimpl.h"
 #include "ibusimpl.h"
@@ -41,6 +45,29 @@ static BusIBusImpl *ibus = NULL;
 static char *address = NULL;
 static gboolean _restart = FALSE;
 
+static char *
+_get_exec_path (void)
+{
+#ifdef __APPLE__
+    /* /proc is not available on macOS */
+    uint32_t size = 0;
+    if (_NSGetExecutablePath (NULL, &size) == -1 && size > 0) {
+        char *buffer = g_malloc (size);
+        if (_NSGetExecutablePath (buffer, &size) == 0) {
+            char real[PATH_MAX];
+            if (realpath (buffer, real) != NULL) {
+                g_free (buffer);
+                return g_strdup (real);
+            }
+        }
+        g_free (buffer);
+    }
+    return NULL;
+#else
+    return g_file_read_link ("/proc/self/exe", NULL);
+#endif
+}
+
 static void
 _restart_server (void)
 {
@@ -51,7 +78,7 @@ _restart_server (void)
     char proclnk[MAXSIZE];
     char filename[MAXSIZE];
 
-    exe = g_file_read_link ("/proc/self/exe", NULL);
+    exe = _get_exec_path ();
 
     if (exe == NULL)
         exe = g_strdup (BINDIR "/ibus-daemon");
@@ -61,6 +88,10 @@ _restart_server (void)
         errno = 0;
         /* only close valid fds */
         if (fcntl (fd, F_GETFD) != -1 || errno != EBADF) {
+#ifdef __APPLE__
+            /* /proc/self/fd is not available on macOS */
+            close (fd);
+#else
             g_sprintf (proclnk, "/proc/self/fd/%d", fd);
             r = readlink (proclnk, filename, MAXSIZE);
             if (r < 0) {
@@ -72,6 +103,7 @@ _restart_server (void)
             if (g_strcmp0 (filename, "anon_inode:inotify") != 0) {
                 close (fd);
             }
+#endif
         }
     }
 

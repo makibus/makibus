@@ -22,7 +22,7 @@ ibus_bin_cflags = [
 ibus_bin_valaflags = [
 ]
 
-if get_option('emoji-dict') and get_option('ui')
+if enable_emoji_dict and get_option('ui')
   ibus_bin_valaflags += [ '-D', 'EMOJI_DICT' ]
 endif
 

@@ -33,7 +33,7 @@ ibus_daemon_cflags = [
   '-DBINDIR="@0@"'.format(get_option('prefix') / get_option('bindir')),
 ]
 
-if get_option('emoji-dict')
+if enable_emoji_dict
   ibus_daemon_cflags += '-DEMOJI_DICT'
 endif
 

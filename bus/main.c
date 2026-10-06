@@ -249,6 +249,10 @@ main (gint argc, gchar **argv)
 
     ibus_set_log_handler (g_verbose);
 
+    /* The log handler writes to the standard output, which is fully
+     * buffered when redirected to a file. */
+    setvbuf (stdout, NULL, _IOLBF, 0);
+
     /* check if ibus-daemon is running in this session */
     if (ibus_get_address () != NULL) {
         IBusBus *bus = ibus_bus_new ();

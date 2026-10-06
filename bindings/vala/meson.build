@@ -39,7 +39,7 @@ xi_vapi = declare_dependency(
   ],
 )
 
-if get_option('emoji-dict') and enable_gtk3
+if enable_emoji_dict and enable_gtk3
   # Lordy lordy
   libibus_emoji_dialog_sources = files(
     meson.current_source_dir() / '../../ui/gtk3/candidatearea.vala',

@@ -2,7 +2,7 @@ project('ibus',
   [ 'c', 'vala' ],
   version: '1.5.35@0@'.format(run_command(
       'sh', '-c',
-      '. "@0@" 2>/dev/null; test "x$IBUS_RELEASED" = "x1" && echo -n "" || echo -n "@1@"'.format(
+      '. "@0@" 2>/dev/null; test "x$IBUS_RELEASED" = "x1" && printf %s "" || printf %s "@1@"'.format(
           meson.current_source_dir() / 'meson.config',
           '-rc1'),
       check: true).stdout().strip()),
@@ -63,6 +63,8 @@ ibus_log_domain = 'IBUS'
 gettext_package = 'ibus10'
 endian = host_machine.endian()
 
+host_is_darwin = host_machine.system() == 'darwin'
+
 if get_option('socket-dir') == ''
   if target_machine.system() == 'linux'
     ibus_socket_dir = 'unix:tmpdir=$XDG_CACHE_HOME/ibus'
@@ -73,28 +75,73 @@ else
   ibus_socket_dir = get_option('socket-dir')
 endif
 
-if get_option('emoji-dict')
+# The emoji and Unicode dictionaries are optional but enabled by default.
+# The data files are not shipped with macOS so they are disabled with a
+# warning instead of aborting the configure step there.
+enable_emoji_dict = get_option('emoji-dict')
+if enable_emoji_dict
   if not fs.is_file(get_option('unicode-emoji-dir') / 'emoji-test.txt')
-    error('No $UNICODE_EMOJI_DIR/emoji-test.txt found: You can get the emoji ' +
-          'files from http://www.unicode.org/Public/emoji/4.0/')
-  endif
-
-  emoji_annotation_dir = get_option('emoji-annotation-dir')
-  if not fs.is_file(emoji_annotation_dir / 'en.xml')
-    error('No $EMOJI_ANNOTATION_DIR/en.xml found: You can get it from ' +
-          'https://github.com/fujiwarat/cldr-emoji-annotation')
+    if host_is_darwin
+      warning('No $UNICODE_EMOJI_DIR/emoji-test.txt found: ' +
+              'The emoji dictionary is disabled.')
+      enable_emoji_dict = false
+    else
+      error('No $UNICODE_EMOJI_DIR/emoji-test.txt found: You can get the ' +
+            'emoji files from http://www.unicode.org/Public/emoji/4.0/')
+    endif
+  else
+    emoji_annotation_dir = get_option('emoji-annotation-dir')
+    if not fs.is_file(emoji_annotation_dir / 'en.xml')
+      if host_is_darwin
+        warning('No $EMOJI_ANNOTATION_DIR/en.xml found: ' +
+                'The emoji dictionary is disabled.')
+        enable_emoji_dict = false
+      else
+        error('No $EMOJI_ANNOTATION_DIR/en.xml found: You can get it from ' +
+              'https://github.com/fujiwarat/cldr-emoji-annotation')
+      endif
+    endif
   endif
 endif
 
-if get_option('unicode-dict')
-  if not fs.is_file(get_option('ucd-dir') / 'NamesList.txt')
-    error('No find $UCD_DIR/NamesList.txt found: You can get UCD files from ' +
-          'https://www.unicode.org/Public/UNIDATA/')
+enable_unicode_dict = get_option('unicode-dict')
+if enable_unicode_dict
+  ucd_dir = get_option('ucd-dir')
+  if not fs.is_file(ucd_dir / 'NamesList.txt') or
+     not fs.is_file(ucd_dir / 'Blocks.txt')
+    if host_is_darwin
+      warning('No $UCD_DIR/NamesList.txt and Blocks.txt found: ' +
+              'The Unicode dictionary is disabled.')
+      enable_unicode_dict = false
+    else
+      error('No find $UCD_DIR/NamesList.txt found: You can get UCD files ' +
+            'from https://www.unicode.org/Public/UNIDATA/')
+    endif
   endif
-  if not fs.is_file(get_option('ucd-dir') / 'Blocks.txt')
-    error('No $UCD_DIR/Blocks.txt found: You can get UCD ' +
-          'files from https://www.unicode.org/Public/UNIDATA/')
+endif
+
+# The native macOS client and panel are built by default on macOS and
+# cannot be built anywhere else.
+enable_macos_client = get_option('macos-client') or host_is_darwin
+enable_macospanel = get_option('macospanel') or host_is_darwin
+if not host_is_darwin and (enable_macos_client or enable_macospanel)
+  error('The macOS client and panel can be built on macOS only.')
+endif
+if host_is_darwin
+  add_languages('objcpp')
+endif
+
+# The macOS panel provides the same org.freedesktop.IBus.Panel component as
+# the GTK3 panel and only one of them can be installed at a time.
+enable_ui = get_option('ui')
+if enable_macospanel and enable_ui
+  if get_option('macospanel')
+    error('The macOS panel conflicts with the GTK3 panel: ' +
+          'configure with -Dui=false to use the macOS panel.')
   endif
+  warning('The macOS panel replaces the GTK3 panel. ' +
+          'Configure with -Dmacospanel=false to keep the GTK3 panel.')
+  enable_ui = false
 endif
 
 # Dependencies
@@ -154,7 +201,7 @@ if enable_gtk3
         'gtk-3.0' / gtk3_binary_version / 'immodules'
   endif
 else
-  if get_option('ui')
+  if enable_ui
     error('UI option requires GTK3')
   endif
   gtk3_im_module_dir = ''
@@ -179,7 +226,14 @@ endif
 xkbcommon_dep = dependency('xkbcommon', required: false)
 x11_dep = dependency('x11', required: get_option('xim'))
 enable_xim = x11_dep.found()
-if enable_xim
+if enable_xim and enable_gtk3 and not gdk3_x11_dep.found()
+  # ibus-x11 requires an X11 GDK backend but the GTK3 in use was built
+  # without it, e.g. the Homebrew GTK builds on macOS provide the
+  # Quartz backend only.
+  warning('No X11 GDK backend found: XIM is disabled.')
+  enable_xim = false
+endif
+if x11_dep.found()
   enable_xkblib = cc.has_header('X11/XKBlib.h')
 
   xfixes_dep = dependency('xfixes', required: false)
@@ -253,6 +307,13 @@ enable_dconf = dconf_dep.found()
 
 # memconf
 enable_memconf = get_option('memconf')
+if host_is_darwin and not enable_memconf and not enable_dconf
+  # dconf is not available on macOS and ibus-daemon requires a working
+  # config component by default.
+  warning('dconf is not available on macOS: memconf is enabled ' +
+          'for the ibus-daemon config module.')
+  enable_memconf = true
+endif
 build_memconf = enable_memconf or get_option('tests')
 
 # iso-codes
@@ -278,7 +339,11 @@ if enable_libnotify
 endif
 
 # AppIndicator
-if get_option('appindicator')
+appindicator_enabled = get_option('appindicator') and not host_is_darwin
+if get_option('appindicator') and host_is_darwin
+  warning('appindicator is not supported on macOS and is disabled.')
+endif
+if appindicator_enabled
   # dependency('dbusmenu-glib-0.4', method: 'pkg-config') searches pkg-config
   # files but it's expanded to '--pkg dbusmenu-glib-0.4' with
   # executable('ibus-ui-gtk3'). However dbusmenu-glib does not provide VAPI
@@ -444,9 +509,7 @@ subdir('po')
 if get_option('engine')
   subdir('engine')
 endif
-if get_option('ui')
-  subdir('ui')
-endif
+subdir('ui')
 subdir('tools')
 subdir('bus')
 if get_option('setup')
@@ -499,22 +562,24 @@ summary({
   'Build wayland support':         enable_wayland,
   'Build gdk3 wayland support':    enable_gtk3 ?
                                      gdk3_wayland_dep.found() : false,
-  'Build appindicator support':    get_option('appindicator'),
+  'Build appindicator support':    appindicator_enabled,
   'Build memconf modules':         enable_memconf,
   'Build dconf modules':           enable_dconf,
   'Build introspection':           enable_introspection,
   'IBus-1.0.gir scannerflags':     introspection_args,
   'Build vala binding':            true,
   'Build document':                get_option('gtk-doc'),
-  'Build UI':                      get_option('ui'),
+  'Build UI':                      enable_ui,
+  'Build macOS client':            enable_macos_client,
+  'Build macOS panel':             enable_macospanel,
   'Build engine':                  get_option('engine'),
   'Enable key snooper':            get_option('snooper'),
   'No snooper regexes':            get_option('no-snooper-apps'),
   'Enable libnotify':              enable_libnotify,
-  'Enable Emoji dict':             get_option('emoji-dict'),
+  'Enable Emoji dict':             enable_emoji_dict,
   'Unicode Emoji directory':       get_option('unicode-emoji-dir'),
   'CLDR annotation directory':     get_option('emoji-annotation-dir'),
-  'Enable Unicode dict':           get_option('unicode-dict'),
+  'Enable Unicode dict':           enable_unicode_dict,
   'UCD directory':                 get_option('ucd-dir'),
   'Socket directory':              ibus_socket_dir,
   'XFixes client disconnect':      enable_xfixes,

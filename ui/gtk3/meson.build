@@ -85,7 +85,7 @@ if enable_libnotify
   ibus_ui_gtk3_valaflags += [ '-D', 'ENABLE_LIBNOTIFY' ]
 endif
 
-if get_option('emoji-dict')
+if enable_emoji_dict
   ibus_ui_gtk3_valaflags += [ '-D', 'EMOJI_DICT' ]
 endif
 
@@ -103,7 +103,7 @@ if enable_wayland and gdk3_wayland_dep.found()
   ]
 endif
 
-if get_option('appindicator')
+if appindicator_enabled
   ibus_ui_gtk3_deps += [ dbusmenu_glib_dep, dbusmenu_gtk3_dep ]
   ibus_ui_gtk3_valaflags += [ '-D', 'INDICATOR',
     dbusmenu_glib_dep.get_variable('vala').split(),
@@ -120,7 +120,7 @@ ibus_ui_gtk3 = executable('ibus-ui-gtk3',
   install_dir: get_option('libexecdir'),
 )
 
-if get_option('emoji-dict')
+if enable_emoji_dict
   # ibus-ui-emojier
   ibus_ui_emojier_sources = files(
     'emojier.vala',

@@ -32,7 +32,13 @@ fixture_set_up (Fixture       *fixture,
     GError *error = NULL;
     int fds[2];
 
-    g_assert_cmpint (socketpair (AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds),
+#ifdef SOCK_CLOEXEC
+    int sock_flags = SOCK_STREAM | SOCK_CLOEXEC;
+#else
+    /* SOCK_CLOEXEC is not available on e.g. macOS */
+    int sock_flags = SOCK_STREAM;
+#endif
+    g_assert_cmpint (socketpair (AF_UNIX, sock_flags, 0, fds),
                      ==, 0);
     fixture->peer_fd = fds[1];
 

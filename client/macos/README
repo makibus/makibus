@@ -1,0 +1,18 @@
+IBus macOS test client
+======================
+
+This directory provides a test purpose client on macOS, which connects
+to the ibus-daemon through D-Bus, creates an input context and sends
+the characters typed in the standard input to the current engine, and
+prints out the engine outputs, e.g. the pre-edit text, candidates and
+the committed text.
+
+Run `ibus-macos-client` after the ibus-daemon is started, type some
+characters followed by Enter to feed them to the engine, and type
+"quit" to exit.  An empty line sends the Return key.
+
+The characters are converted to the ibus key events with the macOS
+virtual keycode (kVK_ANSI_*) to Linux evdev keycode table in main.mm,
+which can also be reused by a real macOS integration implemented with
+Input Method Kit (IMK), which renders the pre-edit text and commits
+the text with the IMK APIs.

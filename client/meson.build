@@ -17,3 +17,7 @@ endif
 if enable_wayland
   subdir('wayland')
 endif
+
+if enable_macos_client
+  subdir('macos')
+endif

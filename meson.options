@@ -184,3 +184,14 @@ option('gtk-doc',
   value: true,
   description: 'Build document',
 )
+# macOS
+option('macos-client',
+  type: 'boolean',
+  value: false,
+  description: 'Build the macOS test client (macOS only)',
+)
+option('macospanel',
+  type: 'boolean',
+  value: false,
+  description: 'Build the native macOS panel (macOS only)',
+)

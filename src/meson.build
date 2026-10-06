@@ -259,7 +259,7 @@ for dict in list(dictdir.glob('**/*.dict')):
     dict.unlink()
 '''
 
-if get_option('emoji-dict')
+if enable_emoji_dict
   emoji_parser_deps = [
     glib_dep,
     gobject_dep,
@@ -333,7 +333,7 @@ if get_option('emoji-dict')
     '-c', check_size, pkgdatadir / 'dicts')
 endif
 
-if get_option('unicode-dict')
+if enable_unicode_dict
   unicode_parser_deps = [
     glib_dep,
     gobject_dep,

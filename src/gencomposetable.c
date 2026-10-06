@@ -91,7 +91,7 @@ main (int argc, char *argv[])
         destdir = argv[1];
     }
     path = g_strdup ("./Compose");
-    if (!path || !g_file_test (path, G_FILE_TEST_EXISTS)) {
+    if (!g_file_test (path, G_FILE_TEST_EXISTS)) {
         g_clear_pointer (&path, g_free);
         for (sys_lang = sys_langs; *sys_lang; sys_lang++) {
             path = g_build_filename (X11_LOCALEDATADIR, *sys_lang,
@@ -100,6 +100,7 @@ main (int argc, char *argv[])
                 continue;
             if (g_file_test (path, G_FILE_TEST_EXISTS))
                 break;
+            g_clear_pointer (&path, g_free);
         }
     }
     if (!path) {

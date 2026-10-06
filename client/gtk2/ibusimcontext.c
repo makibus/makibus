@@ -1737,7 +1737,7 @@ _set_cursor_location_internal (IBusIMContext *ibusimcontext)
     /* Translates from the surface coordinates into the widget coordinates. */
     gtk_native_get_surface_transform (native, &nx, &ny);
 
-#ifdef HAVE_XIM
+#if defined(HAVE_XIM) && defined(GDK_WINDOWING_X11)
     display = gtk_widget_get_display (ibusimcontext->client_window);
     if (GDK_IS_X11_DISPLAY (display)) {
         GdkSurface *surface = gtk_native_get_surface
