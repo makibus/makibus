@@ -31,8 +31,12 @@ native components are added for macOS:
                                                          engines
    ```
 
-   The bridge is launched by launchd on demand with the LaunchAgent
-   plist installed at `share/ibus/org.freedesktop.IBus.xpc.plist`:
+   The bridge runs at load and is kept alive by launchd with the
+   LaunchAgent plist installed at
+   `share/ibus/org.freedesktop.IBus.xpc.plist`, and reconnects to the
+   ibus-daemon automatically when the daemon is restarted.  The
+   requests which arrive before the D-Bus connection is established
+   are buffered until the connection is ready:
 
    ```sh
    cp $prefix/share/ibus/org.freedesktop.IBus.xpc.plist \
@@ -52,6 +56,41 @@ native components are added for macOS:
    "com.example.ime"'`.  `ibus-xpc-test-client` verifies the round
    trip with the hex compose sequence, which commits "A" if the
    daemon is started with `IBUS_ENABLE_CTRL_SHIFT_U=1`.
+
+ * `IBusIM.app` (`client/imk/`) - the Input Method Kit (IMK) front
+   end.  `IBusInputController` receives the key events with
+   `handleEvent:client:`, converts the NSEvent to the ibus key event
+   with the macOS virtual keycode table (`ibus-mac-keycode.h`), and
+   applies the engine outputs with the IMK text input APIs:
+   `setMarkedText` for the pre-edit text and `insertText` for the
+   committed text.  The candidates and the auxiliary texts are
+   rendered by the native ibus panel instead of the IMK front end.
+
+   Install the input method and enable it in System Settings ->
+   Keyboard -> Input Sources:
+
+   ```sh
+   cp -R $prefix/libexec/IBusIM.app ~/Library/Input\ Methods/
+   # Log out and log in again, then add "IBus" in Input Sources.
+   ```
+
+   Verify the XPC round trip of the front end executable without
+   enabling it:
+
+   ```sh
+   ~/Library/Input\ Methods/IBusIM.app/Contents/MacOS/ibus-im --selftest
+   ```
+
+   The App Sandbox was verified to work with the XPC bridge: a
+   sandboxed .app re-signed with `com.apple.security.app-sandbox`
+   completed the hex compose round trip, provided the
+   `com.apple.security.temporary-exception.mach-lookup.global-name`
+   entitlement for `org.freedesktop.IBus.xpc` (see
+   `client/xpc/ibus-xpc-sandbox.entitlements`).  Note that a plain
+   binary cannot enable the sandbox at all - it aborts in
+   `_libsecinit_appsandbox` during the dyld initialization - and that
+   the mach-lookup temporary exception may not be accepted by the App
+   Store review; the Developer ID and the local distributions work.
 
 Both components are enabled by default on macOS and cannot be built on
 other platforms (`-Dmacos-client=false` / `-Dmacospanel=false` to
@@ -142,10 +181,9 @@ IBUS_ENABLE_CTRL_SHIFT_U=1 ibus-daemon --replace --verbose
  * The machine ID fallback in `ibus_get_local_machine_id()` is used
    since `/var/lib/dbus/machine-id` does not exist on macOS.
 
- * The real macOS integration with Input Method Kit (IMK), which
-   converts the NSEvent key events to the ibus key events and commits
-   texts through the IMK APIs, is not implemented yet.  The XPC
-   bridge provides the transport for it; the sandboxed IMK app would
-   connect to the `org.freedesktop.IBus.xpc` Mach service, export the
-   engine output callbacks and drive the input context with the
-   `IBusXpcInputContext` protocol in `client/xpc/main.mm`.
+ * The real macOS integration with Input Method Kit (IMK) is
+   available as a prototype (`client/imk/`): the key events, the
+   pre-edit and the commit texts work through the XPC bridge but the
+   input method has not been polished for the daily use yet, e.g. no
+   menu icon, no input source switching with the ibus engines and no
+   release event forwarding for some compose sequences.

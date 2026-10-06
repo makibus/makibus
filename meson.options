@@ -200,3 +200,8 @@ option('xpc-bridge',
   value: false,
   description: 'Build the XPC bridge for the sandboxed macOS clients (macOS only)',
 )
+option('imk',
+  type: 'boolean',
+  value: false,
+  description: 'Build the Input Method Kit (IMK) front end (macOS only)',
+)

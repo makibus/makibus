@@ -26,44 +26,9 @@
  * IBUS_ENABLE_CTRL_SHIFT_U=1.
  */
 
-#import <Foundation/Foundation.h>
-#import <Foundation/NSXPCConnection.h>
 #import <ibus.h>
 
-static NSString *const kIBusXpcServiceName = @"org.freedesktop.IBus.xpc";
-
-@protocol IBusXpcInputContext <NSObject>
-- (void)createInputContextWithName:(NSString *)name
-                             reply:(void (^)(BOOL ok,
-                                             NSString * _Nullable error))
-                                     reply;
-- (void)focusIn;
-- (void)focusOut;
-- (void)setCursorLocationX:(NSInteger)x y:(NSInteger)y
-                    width:(NSInteger)w height:(NSInteger)h;
-- (void)processKeyEventKeyval:(NSUInteger)keyval
-                      keycode:(NSUInteger)keycode
-                        state:(NSUInteger)state
-                        reply:(void (^)(BOOL handled))reply;
-- (void)setGlobalEngine:(NSString *)engine_name
-                   reply:(void (^)(BOOL ok,
-                                   NSString * _Nullable error))reply;
-- (void)reset;
-@end
-
-@protocol IBusXpcEngineOutput <NSObject>
-- (void)commitText:(NSString *)text;
-- (void)updatePreeditText:(NSString *)text
-                   cursor:(NSUInteger)cursor
-                   visible:(BOOL)visible;
-- (void)forwardKeyEventWithKeyval:(NSUInteger)keyval
-                          keycode:(NSUInteger)keycode
-                            state:(NSUInteger)state;
-@optional
-- (void)updateLookupTable:(NSArray<NSString *> *)candidates
-              cursorIndex:(NSUInteger)cursorIndex
-                   visible:(BOOL)visible;
-@end
+#include "ibus-xpc.h"
 
 @interface IBusXpcTestOutput : NSObject <IBusXpcEngineOutput>
 @property (nonatomic, assign) BOOL gotCommit;
@@ -114,7 +79,7 @@ main (int    argc,
 
         NSXPCConnection *connection =
                 [[NSXPCConnection alloc]
-                        initWithMachServiceName:kIBusXpcServiceName
+                        initWithMachServiceName:@IBUS_XPC_SERVICE_NAME
                                         options:0];
         connection.exportedInterface =
                 [NSXPCInterface
@@ -127,8 +92,15 @@ main (int    argc,
                                 (IBusXpcInputContext)];
         [connection resume];
 
+        connection.invalidationHandler = ^{
+            printf (">>> CONNECTION INVALIDATED\n");
+        };
         id<IBusXpcInputContext> ic =
-                (id<IBusXpcInputContext>) connection.remoteObjectProxy;
+                (id<IBusXpcInputContext>) [connection
+                        remoteObjectProxyWithErrorHandler:^(NSError *error) {
+                    printf (">>> XPC ERROR: %s\n",
+                            error.localizedDescription.UTF8String);
+                }];
 
         dispatch_semaphore_t created = dispatch_semaphore_create (0);
         [ic createInputContextWithName:@"xpc-test"

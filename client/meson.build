@@ -25,3 +25,7 @@ endif
 if enable_xpc_bridge
   subdir('xpc')
 endif
+
+if enable_imk
+  subdir('imk')
+endif

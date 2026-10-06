@@ -17,10 +17,15 @@
 		<key>org.freedesktop.IBus.xpc</key>
 		<true/>
 	</dict>
-	<!-- Uncomment to keep the bridge always running instead of the
-	     on-demand launch by the first XPC connection.
+	<!-- The bridge runs at load and is kept alive, like the
+	     ibus-daemon, since the on-demand launch with the first XPC
+	     connection is not always triggered by launchd.
+	<key>KeepAlive</key>
+	<false/>
+	-->
+	<key>RunAtLoad</key>
+	<true/>
 	<key>KeepAlive</key>
 	<true/>
-	-->
 </dict>
 </plist>

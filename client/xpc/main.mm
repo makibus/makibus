@@ -41,64 +41,10 @@
 #include <ibus.h>
 
 #import <Foundation/Foundation.h>
-#import <Foundation/NSXPCConnection.h>
 
-/* The launchd Mach service name of the bridge. */
-static NSString *const kIBusXpcServiceName = @"org.freedesktop.IBus.xpc";
+#include "ibus-xpc.h"
 
 static IBusBus *_bus = NULL;
-
-/* The XPC protocol which the bridge exports to the clients.  The
- * keycode follows the XKB convention like the other ibus clients,
- * e.g. the macOS virtual keycodes (kVK_ANSI_*) plus 8, and the
- * clients convert the NSEvent keycodes with a conversion table. */
-@protocol IBusXpcInputContext <NSObject>
-/* Create an ibus input context for this connection. */
-- (void)createInputContextWithName:(NSString *)name
-                             reply:(void (^)(BOOL ok,
-                                             NSString * _Nullable error))
-                                     reply;
-- (void)focusIn;
-- (void)focusOut;
-- (void)setCursorLocationX:(NSInteger)x
-                         y:(NSInteger)y
-                     width:(NSInteger)w
-                    height:(NSInteger)h;
-/* Send a key event to the engine.  The reply is called with whether
- * the engine consumed the key event. */
-- (void)processKeyEventKeyval:(NSUInteger)keyval
-                      keycode:(NSUInteger)keycode
-                        state:(NSUInteger)state
-                         reply:(void (^)(BOOL handled))reply;
-/* Select the global engine, e.g. "xkb:us::eng", since the
- * ibus-daemon runs in the global engine mode by default and the
- * per-context SetEngine is rejected there. */
-- (void)setGlobalEngine:(NSString *)engine_name
-                   reply:(void (^)(BOOL ok,
-                                   NSString * _Nullable error))reply;
-- (void)reset;
-@end
-
-/* The XPC protocol which the clients export to receive the engine
- * outputs. */
-@protocol IBusXpcEngineOutput <NSObject>
-- (void)commitText:(NSString *)text;
-- (void)updatePreeditText:(NSString *)text
-                   cursor:(NSUInteger)cursor
-                   visible:(BOOL)visible;
-- (void)forwardKeyEventWithKeyval:(NSUInteger)keyval
-                          keycode:(NSUInteger)keycode
-                            state:(NSUInteger)state;
-@optional
-- (void)showPreedit;
-- (void)hidePreedit;
-- (void)updateAuxiliaryText:(NSString *)text visible:(BOOL)visible;
-- (void)updateLookupTable:(NSArray<NSString *> *)candidates
-               cursorIndex:(NSUInteger)cursorIndex
-                    visible:(BOOL)visible;
-- (void)inputContextEnabled;
-- (void)inputContextDisabled;
-@end
 
 /* One XPC connection corresponds to one ibus input context. */
 @interface IBusXpcSession : NSObject <IBusXpcInputContext>
@@ -111,58 +57,66 @@ static IBusBus *_bus = NULL;
 /* Keep the sessions alive while their XPC connections are up. */
 static NSMutableSet<IBusXpcSession *> *_sessions = nil;
 
-/* The create requests which arrived before the ibus-daemon connection
- * was established.  They are replied when the connection is ready or
- * on a timeout. */
-@interface IBusXpcPendingCreate : NSObject
-@property (nonatomic, weak) IBusXpcSession *session;
-@property (nonatomic, copy) NSString *name;
-@property (nonatomic, copy) void (^reply) (BOOL ok, NSString *error);
+/* The requests which arrived before the ibus-daemon connection was
+ * established.  They run when the connection is ready or their
+ * timeouts fire. */
+@interface IBusXpcPending : NSObject
+@property (nonatomic, copy) void (^block) (void);
+@property (nonatomic, copy) void (^timeout) (void);
 @property (nonatomic, assign) BOOL done;
 @end
 
-@implementation IBusXpcPendingCreate
+@implementation IBusXpcPending
 @end
 
-static NSMutableArray<IBusXpcPendingCreate *> *_pending_creates = nil;
+static NSMutableArray<IBusXpcPending *> *_pending_on_connect = nil;
 
 static void
-_reply_pending (IBusXpcPendingCreate *pending,
-                BOOL ok,
-                NSString *error)
+_finish_pending (IBusXpcPending *pending,
+                 void (^runner) (void))
 {
     @synchronized (pending) {
         if (pending.done)
             return;
         pending.done = YES;
     }
-    pending.reply (ok, error);
+    runner ();
 }
 
 static void
-_flush_pending_creates (void)
+_when_bus_connected (void (^block) (void),
+                     void (^timeout) (void))
 {
-    NSArray<IBusXpcPendingCreate *> *pending;
-    @synchronized (_pending_creates) {
-        pending = [_pending_creates copy];
-        [_pending_creates removeAllObjects];
+    if (_bus != NULL && ibus_bus_is_connected (_bus)) {
+        block ();
+        return;
     }
-    for (IBusXpcPendingCreate *p in pending) {
-        @synchronized (p) {
-            if (p.done)
-                continue;
-        }
-        IBusXpcSession *session = p.session;
-        if (session == nil) {
-            _reply_pending (p, NO, @"The XPC connection was closed");
-            continue;
-        }
-        [session createInputContextWithName:p.name
-                                      reply:^(BOOL ok,
-                                              NSString *error) {
-            _reply_pending (p, ok, error);
-        }];
+    IBusXpcPending *pending = [[IBusXpcPending alloc] init];
+    pending.block = block;
+    pending.timeout = timeout;
+    @synchronized (_pending_on_connect) {
+        [_pending_on_connect addObject:pending];
     }
+    dispatch_after (
+            dispatch_time (DISPATCH_TIME_NOW,
+                           (int64_t) (10 * NSEC_PER_SEC)),
+            dispatch_get_global_queue (
+                    DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+            ^{
+                _finish_pending (pending, ^{ pending.timeout (); });
+            });
+}
+
+static void
+_flush_pending_on_connect (void)
+{
+    NSArray<IBusXpcPending *> *pending;
+    @synchronized (_pending_on_connect) {
+        pending = [_pending_on_connect copy];
+        [_pending_on_connect removeAllObjects];
+    }
+    for (IBusXpcPending *p in pending)
+        _finish_pending (p, ^{ p.block (); });
 }
 
 @implementation IBusXpcSession
@@ -195,31 +149,21 @@ _flush_pending_creates (void)
         reply (YES, nil);
         return;
     }
-    if (_bus == NULL || !ibus_bus_is_connected (_bus)) {
-        /* The bridge can be launched by launchd together with the
-         * first XPC connection, before the D-Bus connection to the
-         * ibus-daemon is established.  Defer the request until the
-         * daemon is connected or a timeout. */
-        IBusXpcPendingCreate *pending =
-                [[IBusXpcPendingCreate alloc] init];
-        pending.session = self;
-        pending.name = name;
-        pending.reply = reply;
-        @synchronized (_pending_creates) {
-            [_pending_creates addObject:pending];
-        }
-        dispatch_after (
-                dispatch_time (DISPATCH_TIME_NOW,
-                               (int64_t) (10 * NSEC_PER_SEC)),
-                dispatch_get_global_queue (
-                        DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
-                ^{
-                    _reply_pending (pending, NO,
-                                    @"ibus-daemon connection timeout");
-                });
-        return;
-    }
+    /* The bridge can be launched by launchd together with the first
+     * XPC connection, before the D-Bus connection to the
+     * ibus-daemon is established. */
+    IBusXpcSession * __unsafe_unretained session = self;
+    _when_bus_connected (^{
+        [session _createInputContextNowWithName:name reply:reply];
+    }, ^{
+        reply (NO, @"ibus-daemon connection timeout");
+    });
+}
 
+- (void)_createInputContextNowWithName:(NSString *)name
+                                 reply:(void (^)(BOOL,
+                                                 NSString * _Nullable))reply
+{
     IBusInputContext *context =
             ibus_bus_create_input_context (_bus, name.UTF8String);
     if (context == NULL) {
@@ -324,15 +268,15 @@ _process_key_event_done (GObject      *source_object,
 - (void)setGlobalEngine:(NSString *)engine_name
                    reply:(void (^)(BOOL, NSString * _Nullable))reply
 {
-    if (_bus == NULL || !ibus_bus_is_connected (_bus)) {
-        reply (NO, @"ibus-daemon is not connected");
-        return;
-    }
-    if (ibus_bus_set_global_engine (_bus, engine_name.UTF8String))
-        reply (YES, nil);
-    else
-        reply (NO, [NSString stringWithFormat:
-                @"Failed to set the engine %@", engine_name]);
+    _when_bus_connected (^{
+        if (ibus_bus_set_global_engine (_bus, engine_name.UTF8String))
+            reply (YES, nil);
+        else
+            reply (NO, [NSString stringWithFormat:
+                    @"Failed to set the engine %@", engine_name]);
+    }, ^{
+        reply (NO, @"ibus-daemon connection timeout");
+    });
 }
 
 /* GLib signal callbacks: forward the engine outputs to the client
@@ -507,7 +451,39 @@ _bus_connected_cb (IBusBus *bus,
                    gpointer user_data)
 {
     g_print ("ibus-xpc-bridge: connected to ibus-daemon\n");
-    _flush_pending_creates ();
+    _flush_pending_on_connect ();
+}
+
+static void _bus_disconnected_cb (IBusBus *bus, gpointer user_data);
+
+static gboolean
+_reconnect_cb (gpointer user_data)
+{
+    if (_bus != NULL && ibus_bus_is_connected (_bus))
+        return G_SOURCE_REMOVE;
+    if (_bus != NULL) {
+        g_object_unref (_bus);
+        _bus = NULL;
+    }
+    g_print ("ibus-xpc-bridge: reconnecting to ibus-daemon\n");
+    _bus = ibus_bus_new_async_client ();
+    g_signal_connect (_bus, "connected",
+                      G_CALLBACK (_bus_connected_cb), NULL);
+    g_signal_connect (_bus, "disconnected",
+                      G_CALLBACK (_bus_disconnected_cb), NULL);
+    g_signal_connect (_bus, "disconnected",
+                      G_CALLBACK (_bus_disconnected_cb), NULL);
+    return G_SOURCE_CONTINUE;
+}
+
+static void
+_bus_disconnected_cb (IBusBus *bus,
+                      gpointer user_data)
+{
+    g_print ("ibus-xpc-bridge: disconnected from ibus-daemon\n");
+    /* The ibus-daemon may be restarted; keep reconnecting so that
+     * the bridge recovers without being relaunched. */
+    g_timeout_add_seconds (1, _reconnect_cb, NULL);
 }
 
 int
@@ -522,12 +498,12 @@ main (int    argc,
                           G_CALLBACK (_bus_connected_cb), NULL);
 
         _sessions = [NSMutableSet set];
-        _pending_creates = [NSMutableArray array];
+        _pending_on_connect = [NSMutableArray array];
 
         IBusXpcDelegate *delegate = [[IBusXpcDelegate alloc] init];
         NSXPCListener *listener =
                 [[NSXPCListener alloc]
-                        initWithMachServiceName:kIBusXpcServiceName];
+                        initWithMachServiceName:@IBUS_XPC_SERVICE_NAME];
 
         /* Optionally restrict the clients to the signed binaries,
          * e.g. with:

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>ibus-im</string>
+	<key>CFBundleIdentifier</key>
+	<string>org.freedesktop.IBus.IM</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>IBus</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>InputMethodServer</key>
+	<string>IBusInputController</string>
+	<key>LSBackgroundOnly</key>
+	<true/>
+	<key>tsInputMethodCharacterRepKey</key>
+	<array>
+		<string>Latn</string>
+	</array>
+	<key>ComponentInputModeDict</key>
+	<dict>
+		<key>tsInputModeListKey</key>
+		<dict>
+			<key>org.freedesktop.IBus.IM</key>
+			<dict>
+				<key>TISInputSourceID</key>
+				<string>org.freedesktop.IBus.IM</string>
+				<key>TISIntendedLanguage</key>
+				<string>en</string>
+				<key>TISInputModeIsVisible</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>
