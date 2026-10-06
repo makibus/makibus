@@ -62,9 +62,78 @@
 }
 @end
 
+#import <Carbon/Carbon.h>
+#import <CoreGraphics/CoreGraphics.h>
+
+#import "IBusKeyConvert.h"
+
+static NSEvent *
+_fake_key (unichar ch, NSUInteger flags, unsigned short keycode)
+{
+    NSString *characters = [NSString stringWithCharacters:&ch length:1];
+    NSString *plain = [characters lowercaseString];
+    return [NSEvent keyEventWithType:NSEventTypeKeyDown
+                            location:NSZeroPoint
+                       modifierFlags:flags
+                           timestamp:0
+                        windowNumber:0
+                             context:nil
+                          characters:(flags & NSShiftKeyMask) ?
+                                      characters : plain
+         charactersIgnoringModifiers:plain
+                       isARepeat:NO
+                         keyCode:keycode];
+}
+
+static int
+_run_conversion_tests (void)
+{
+    int failures = 0;
+#define EXPECT(desc, cond) do { \
+    if (!(cond)) { printf ("FAIL: %s\n", desc); failures++; } \
+} while (0)
+
+    EXPECT ("keyval 'a'", ibus_keyval_from_event (
+            _fake_key ('a', 0, kVK_ANSI_A)) == IBUS_KEY_a);
+    EXPECT ("keyval 'A' with Shift",
+            ibus_keyval_from_event (
+                    _fake_key ('A', NSEventModifierFlagShift,
+                               kVK_ANSI_A)) == IBUS_KEY_A);
+    EXPECT ("keyval Return",
+            ibus_keyval_from_event (
+                    _fake_key ('\r', 0, kVK_Return)) == IBUS_KEY_Return);
+    EXPECT ("keycode 'h' XKB",
+            ibus_mac_keycode_to_xkb (kVK_ANSI_H) == 43);
+    EXPECT ("state shift+ctrl",
+            ibus_state_from_modifier_flags (
+                    NSEventModifierFlagShift | NSEventModifierFlagControl,
+                    NO) ==
+            (IBUS_SHIFT_MASK | IBUS_CONTROL_MASK));
+    EXPECT ("state command",
+            ibus_state_from_modifier_flags (
+                    NSEventModifierFlagCommand, NO) == IBUS_MOD4_MASK);
+
+    /* The flagsChanged NSEvent is built from a CGEvent since the
+     * keyCode of an NSEvent cannot be assigned directly. */
+    CGEventRef cg = CGEventCreateKeyboardEvent (NULL, kVK_Shift, true);
+    CGEventSetFlags (cg, (CGEventFlags) kCGEventFlagMaskShift);
+    NSEvent *shiftDown = [NSEvent eventWithCGEvent:cg];
+    CFRelease (cg);
+    guint keyval = 0, keycode = 0;
+    EXPECT ("modifier event Shift_L",
+            ibus_modifier_event (shiftDown, &keyval, &keycode) &&
+            keyval == IBUS_KEY_Shift_L && keycode == 50);
+
+    printf (failures ? "conversion tests FAILED\n" : "conversion tests OK\n");
+    return failures;
+}
+
 static int
 _run_selftest (void)
 {
+    int failures = _run_conversion_tests ();
+    if (failures)
+        return EXIT_FAILURE;
     printf ("ibus-im selftest: connecting to the XPC bridge...\n");
     IBusXpcClient *client = [IBusXpcClient sharedClient];
 

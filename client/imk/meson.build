@@ -6,6 +6,7 @@ ibus_im_conf.set('VERSION', meson.project_version())
 
 ibus_im_sources = files(
   'IBusInputController.mm',
+  'IBusKeyConvert.mm',
   'IBusXpcClient.mm',
   'main.mm',
 )

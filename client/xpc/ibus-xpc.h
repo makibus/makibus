@@ -58,6 +58,10 @@
 - (void)setGlobalEngine:(NSString *)engine_name
                    reply:(void (^)(BOOL ok,
                                    NSString * _Nullable error))reply;
+/* List the registered engines; each dictionary has the name,
+ * longname, description and language keys. */
+- (void)listEnginesWithReply:(void (^)(NSArray<NSDictionary<
+        NSString *, NSString *> *> * _Nullable engines))reply;
 - (void)reset;
 @end
 

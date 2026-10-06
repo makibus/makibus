@@ -21,69 +21,12 @@
 
 #import "IBusInputController.h"
 
-#import <Carbon/Carbon.h>
-#import <ibus.h>
+#import "IBusKeyConvert.h"
 
-#import "ibus-mac-keycode.h"
-
-/* Convert the NSEvent modifier flags to the ibus modifier state.
- * The Command key is mapped to IBUS_MOD4_MASK (Super) like the
- * Windows/Super keys on the other platforms. */
-static NSUInteger
-_ibus_state_from_modifier_flags (NSUInteger flags, BOOL release)
-{
-    NSUInteger state = 0;
-    if (flags & NSShiftKeyMask)
-        state |= IBUS_SHIFT_MASK;
-    if (flags & NSAlphaShiftKeyMask)
-        state |= IBUS_LOCK_MASK;
-    if (flags & NSControlKeyMask)
-        state |= IBUS_CONTROL_MASK;
-    if (flags & NSAlternateKeyMask)
-        state |= IBUS_MOD1_MASK;
-    if (flags & NSCommandKeyMask)
-        state |= IBUS_MOD4_MASK;
-    if (release)
-        state |= IBUS_RELEASE_MASK;
-    return state;
-}
-
-/* Resolve the ibus keyval of a key down event: the printable
- * characters follow the case of the modifiers like the X11 keyboard
- * mapping and the function keys are resolved from the keycode. */
-static guint
-_ibus_keyval_from_event (NSEvent *event)
-{
-    NSUInteger flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
-    BOOL upper = (flags & NSShiftKeyMask) || (flags & NSAlphaShiftKeyMask);
-
-    switch (event.keyCode) {
-    case kVK_Return:        return IBUS_KEY_Return;
-    case kVK_Tab:           return IBUS_KEY_Tab;
-    case kVK_Space:         return IBUS_KEY_space;
-    case kVK_Delete:        return IBUS_KEY_BackSpace;
-    case kVK_ForwardDelete: return IBUS_KEY_Delete;
-    case kVK_Escape:        return IBUS_KEY_Escape;
-    case kVK_LeftArrow:     return IBUS_KEY_Left;
-    case kVK_RightArrow:    return IBUS_KEY_Right;
-    case kVK_UpArrow:       return IBUS_KEY_Up;
-    case kVK_DownArrow:     return IBUS_KEY_Down;
-    case kVK_Home:          return IBUS_KEY_Home;
-    case kVK_End:           return IBUS_KEY_End;
-    case kVK_PageUp:        return IBUS_KEY_Page_Up;
-    case kVK_PageDown:      return IBUS_KEY_Page_Down;
-    }
-
-    NSString *characters = event.charactersIgnoringModifiers;
-    if (characters.length != 1)
-        return 0;
-    unichar ch = [characters characterAtIndex:0];
-    if (ch >= 'a' && ch <= 'z' && upper)
-        ch = ch - 'a' + 'A';
-    if (ch < 0x80 && g_ascii_isprint ((gchar) ch))
-        return (guint) ch;
-    return ibus_unicode_to_keyval ((gunichar) ch);
-}
+/* The keyboard modifier state of the process, which is updated with
+ * the NSFlagsChanged events since the IMK front end does not receive
+ * the modifier key down/up pairs as the key events. */
+static NSUInteger _last_modifier_flags = 0;
 
 @implementation IBusInputController
 
@@ -93,10 +36,39 @@ _ibus_keyval_from_event (NSEvent *event)
 {
     self = [super initWithServer:server delegate:delegate client:client];
     if (self) {
-        IBusXpcClient *xpc = [IBusXpcClient sharedClient];
-        xpc.delegate = self;
+        /* The delegate is set on activateServer: instead so that the
+         * engine outputs are always routed to the focused
+         * controller. */
     }
     return self;
+}
+
+/* Forward the modifier transitions as the individual ibus key
+ * events.  The compose sequences like Ctrl+Shift+U rely on the
+ * modifier press and release events. */
+- (void)_handleFlagsChanged:(NSEvent *)event
+{
+    guint keyval = 0;
+    guint keycode = 0;
+    if (!ibus_modifier_event (event, &keyval, &keycode))
+        return;
+
+    NSUInteger flags = event.modifierFlags &
+            NSEventModifierFlagDeviceIndependentFlagsMask;
+    NSUInteger bit = ibus_modifier_bit_of_keycode (event.keyCode);
+    BOOL pressed = (bit != 0 && (flags & bit) != 0 &&
+                    (_last_modifier_flags & bit) == 0);
+    BOOL released = (bit != 0 && (flags & bit) == 0 &&
+                     (_last_modifier_flags & bit) != 0);
+    _last_modifier_flags = flags;
+    if (!pressed && !released)
+        return;
+
+    NSUInteger state = ibus_state_from_modifier_flags (flags, released);
+    [[IBusXpcClient sharedClient] processKeyEventKeyval:keyval
+                                                keycode:keycode
+                                                  state:state
+                                                   reply:^(BOOL handled) {}];
 }
 
 /* The heart of the input method: convert the NSEvent to the ibus key
@@ -104,18 +76,20 @@ _ibus_keyval_from_event (NSEvent *event)
  * event so that it is not delivered to the application. */
 - (BOOL)handleEvent:(NSEvent *)event client:(id)sender
 {
+    if (event.type == NSEventTypeFlagsChanged) {
+        [self _handleFlagsChanged:event];
+        return NO;
+    }
     if (event.type != NSEventTypeKeyDown)
         return NO;
 
-    guint keyval = _ibus_keyval_from_event (event);
+    guint keyval = ibus_keyval_from_event (event);
     guint keycode = ibus_mac_keycode_to_xkb (event.keyCode);
-    NSUInteger state = _ibus_state_from_modifier_flags (
+    NSUInteger state = ibus_state_from_modifier_flags (
             event.modifierFlags, NO);
     if (keyval == 0 && keycode == 0)
         return NO;
 
-    /* The engine outputs are applied in the IBusXpcClientDelegate
-     * callbacks; the reply only decides the pass-through. */
     __block BOOL result = NO;
     dispatch_semaphore_t done = dispatch_semaphore_create (0);
     BOOL sent = [[IBusXpcClient sharedClient]
@@ -133,13 +107,13 @@ _ibus_keyval_from_event (NSEvent *event)
     dispatch_semaphore_wait (done,
             dispatch_time (DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
 
-    /* Send the release event asynchronously for the compose
-     * sequences. */
+    /* IMK does not deliver the key up events; send the release
+     * asynchronously right after the press like the test clients. */
     [[IBusXpcClient sharedClient]
             processKeyEventKeyval:keyval
                           keycode:keycode
                             state:state | IBUS_RELEASE_MASK
-                             reply:^(BOOL handled) {}];
+                           reply:^(BOOL handled) {}];
 
     if (result)
         [self _updateCursorLocation];
@@ -165,8 +139,11 @@ _ibus_keyval_from_event (NSEvent *event)
 
 - (void)activateServer:(id)sender
 {
-    [[IBusXpcClient sharedClient] focusIn];
-    [[IBusXpcClient sharedClient] reset];
+    IBusXpcClient *xpc = [IBusXpcClient sharedClient];
+    xpc.delegate = self;
+    [xpc refreshEngines];
+    [xpc focusIn];
+    [xpc reset];
 }
 
 - (void)deactivateServer:(id)sender
@@ -176,7 +153,15 @@ _ibus_keyval_from_event (NSEvent *event)
     [client setMarkedText:@""
             selectionRange:NSMakeRange (0, 0)
         replacementRange:NSMakeRange (NSNotFound, NSNotFound)];
-    [[IBusXpcClient sharedClient] focusOut];
+    IBusXpcClient *xpc = [IBusXpcClient sharedClient];
+    if (xpc.delegate == self)
+        xpc.delegate = nil;
+    [xpc focusOut];
+}
+
+- (NSMenu *)menu
+{
+    return [[IBusXpcClient sharedClient] engineMenu];
 }
 
 - (void)commitText:(NSString *)text

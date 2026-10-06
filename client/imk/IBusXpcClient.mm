@@ -30,6 +30,7 @@
     id<IBusXpcInputContext> _context;
     BOOL _creating;
     BOOL _ready;
+    NSString *_currentEngine;
 }
 
 + (instancetype)sharedClient
@@ -164,6 +165,68 @@
                     width:(NSInteger)w height:(NSInteger)h
 {
     [[self context] setCursorLocationX:x y:y width:w height:h];
+}
+
+#pragma mark Engines and the input method menu
+
+- (void)refreshEngines
+{
+    [[(NSXPCConnection *) _connection
+            remoteObjectProxyWithErrorHandler:^(NSError *error) {
+        NSLog (@"ibus: listEngines failed: %@", error);
+    }] listEnginesWithReply:^(NSArray<NSDictionary<NSString *,
+                                              NSString *> *> *engines) {
+        if (engines == nil)
+            return;
+        /* The reply runs on the connection queue; the menu may be
+         * read from the main thread. */
+        dispatch_async (dispatch_get_main_queue (), ^{
+            self.engines = engines;
+        });
+    }];
+}
+
+- (void)switchEngineFromMenuItem:(NSMenuItem *)item
+{
+    NSString *name = item.representedObject;
+    if (name == nil)
+        return;
+    _currentEngine = name;
+    [[self context] setGlobalEngine:name
+                              reply:^(BOOL ok, NSString *error) {
+        if (!ok)
+            NSLog (@"ibus: setGlobalEngine failed: %@", error);
+    }];
+}
+
+- (NSMenu *)engineMenu
+{
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"IBus"];
+    NSMenuItem *reset = [menu addItemWithTitle:NSLocalizedString (
+            @"Reset", @"Reset the input context")
+                                        action:@selector (reset)
+                                 keyEquivalent:@""];
+    reset.target = self;
+    [menu addItem:[NSMenuItem separatorItem]];
+    if (self.engines.count == 0) {
+        [menu addItemWithTitle:NSLocalizedString (
+                @"No engines", @"No ibus engines are registered")
+                        action:nil keyEquivalent:@""];
+    }
+    for (NSDictionary<NSString *, NSString *> *engine in self.engines) {
+        NSString *name = engine[@"name"];
+        NSString *title = engine[@"longname"].length > 0 ?
+                engine[@"longname"] : name;
+        NSMenuItem *item = [menu addItemWithTitle:title
+                                            action:@selector (
+                                                    switchEngineFromMenuItem:)
+                                     keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = name;
+        item.state = [name isEqualToString:_currentEngine] ?
+                NSControlStateValueOn : NSControlStateValueOff;
+    }
+    return menu;
 }
 
 /* IBusXpcEngineOutput; called on the connection GCD queue. */

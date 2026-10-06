@@ -63,8 +63,12 @@ native components are added for macOS:
    with the macOS virtual keycode table (`ibus-mac-keycode.h`), and
    applies the engine outputs with the IMK text input APIs:
    `setMarkedText` for the pre-edit text and `insertText` for the
-   committed text.  The candidates and the auxiliary texts are
-   rendered by the native ibus panel instead of the IMK front end.
+   committed text.  The modifier transitions are forwarded as the
+   individual ibus key events from the NSFlagsChanged events, which
+   the compose sequences like Ctrl+Shift+U rely on.  The candidates
+   and the auxiliary texts are rendered by the native ibus panel
+   instead of the IMK front end, and the input method menu lists the
+   ibus engines to switch the global engine.
 
    Install the input method and enable it in System Settings ->
    Keyboard -> Input Sources:
@@ -181,9 +185,8 @@ IBUS_ENABLE_CTRL_SHIFT_U=1 ibus-daemon --replace --verbose
  * The machine ID fallback in `ibus_get_local_machine_id()` is used
    since `/var/lib/dbus/machine-id` does not exist on macOS.
 
- * The real macOS integration with Input Method Kit (IMK) is
-   available as a prototype (`client/imk/`): the key events, the
-   pre-edit and the commit texts work through the XPC bridge but the
-   input method has not been polished for the daily use yet, e.g. no
-   menu icon, no input source switching with the ibus engines and no
-   release event forwarding for some compose sequences.
+ * The IMK front end (`client/imk/`) is a prototype: the key events,
+   the pre-edit and the commit texts work through the XPC bridge and
+   the selftest also covers the NSEvent conversion, but it has not
+   been polished for the daily use yet, e.g. the autorepeat handling
+   and the dead keys of the macOS layouts.

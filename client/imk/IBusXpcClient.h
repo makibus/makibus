@@ -22,7 +22,7 @@
 #ifndef __IBUS_XPC_CLIENT_H_
 #define __IBUS_XPC_CLIENT_H_
 
-#import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 
 #import "ibus-xpc.h"
 
@@ -71,6 +71,18 @@
 - (void)reset;
 - (void)setCursorLocationX:(NSInteger)x y:(NSInteger)y
                     width:(NSInteger)w height:(NSInteger)h;
+
+/* The cached engine descriptions of the last refreshEngines call,
+ * each with the name, longname, description and language keys. */
+@property (nonatomic, copy)
+        NSArray<NSDictionary<NSString *, NSString *> *> *engines;
+
+/* Refresh the engines cache asynchronously. */
+- (void)refreshEngines;
+
+/* The input method menu with the engine list; the target of the menu
+ * items is the shared client which outlives the IMK controllers. */
+- (NSMenu *)engineMenu;
 
 @end
 

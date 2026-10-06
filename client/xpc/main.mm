@@ -265,6 +265,32 @@ _process_key_event_done (GObject      *source_object,
         ibus_input_context_reset (_context);
 }
 
+- (void)listEnginesWithReply:(void (^)(NSArray<NSDictionary<
+        NSString *, NSString *> *> *))reply
+{
+    _when_bus_connected (^{
+        GList *engines = ibus_bus_list_engines (_bus);
+        NSMutableArray *result = [NSMutableArray array];
+        for (GList *p = engines; p != NULL; p = p->next) {
+            IBusEngineDesc *desc = (IBusEngineDesc *) p->data;
+            [result addObject:@{
+                @"name": [NSString stringWithUTF8String:
+                            ibus_engine_desc_get_name (desc) ?: ""],
+                @"longname": [NSString stringWithUTF8String:
+                            ibus_engine_desc_get_longname (desc) ?: ""],
+                @"description": [NSString stringWithUTF8String:
+                            ibus_engine_desc_get_description (desc) ?: ""],
+                @"language": [NSString stringWithUTF8String:
+                            ibus_engine_desc_get_language (desc) ?: ""],
+            }];
+        }
+        g_list_free_full (engines, g_object_unref);
+        reply (result);
+    }, ^{
+        reply (nil);
+    });
+}
+
 - (void)setGlobalEngine:(NSString *)engine_name
                    reply:(void (^)(BOOL, NSString * _Nullable))reply
 {
