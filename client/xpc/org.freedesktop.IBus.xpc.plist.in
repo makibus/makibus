@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- filename: org.freedesktop.IBus.xpc.plist -->
+<!-- Install to ~/Library/LaunchAgents and load with:
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/org.freedesktop.IBus.xpc.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>org.freedesktop.IBus.xpc</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@libexecdir@/ibus-xpc-bridge</string>
+	</array>
+	<key>MachServices</key>
+	<dict>
+		<key>org.freedesktop.IBus.xpc</key>
+		<true/>
+	</dict>
+	<!-- Uncomment to keep the bridge always running instead of the
+	     on-demand launch by the first XPC connection.
+	<key>KeepAlive</key>
+	<true/>
+	-->
+</dict>
+</plist>

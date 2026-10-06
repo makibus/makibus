@@ -21,3 +21,7 @@ endif
 if enable_macos_client
   subdir('macos')
 endif
+
+if enable_xpc_bridge
+  subdir('xpc')
+endif

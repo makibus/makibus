@@ -19,6 +19,40 @@ native components are added for macOS:
    with AppKit.  It replaces the GTK3 panel, which can be built back
    with `-Dmacospanel=false`.
 
+ * `ibus-xpc-bridge` (`client/xpc/`) - the XPC bridge for the
+   sandboxed clients, e.g. the Input Method Kit (IMK) input methods
+   distributed in the App Store.  It exposes the ibus input context
+   as the launchd Mach service `org.freedesktop.IBus.xpc` and talks
+   to the ibus-daemon through the regular D-Bus protocol:
+
+   ```
+   sandboxed client --XPC--> ibus-xpc-bridge --D-Bus--> ibus-daemon
+                                                             |
+                                                         engines
+   ```
+
+   The bridge is launched by launchd on demand with the LaunchAgent
+   plist installed at `share/ibus/org.freedesktop.IBus.xpc.plist`:
+
+   ```sh
+   cp $prefix/share/ibus/org.freedesktop.IBus.xpc.plist \
+      ~/Library/LaunchAgents/
+   launchctl bootstrap gui/$(id -u) \
+      ~/Library/LaunchAgents/org.freedesktop.IBus.xpc.plist
+   ```
+
+   The environment of the launchd agents is not inherited from the
+   shell, so the `IBUS_ADDRESS_FILE` of the ibus-daemon must be
+   published with `launchctl setenv IBUS_ADDRESS_FILE <path>` (or use
+   the default address file location without `IBUS_ADDRESS_FILE`).
+   On macOS 13+ the connections can be restricted to the signed
+   clients with the code signing requirement language by setting
+   `IBUS_XPC_CODE_SIGNING_REQUIREMENT` in the launchd environment,
+   e.g. `launchctl setenv IBUS_XPC_CODE_SIGNING_REQUIREMENT 'identifier
+   "com.example.ime"'`.  `ibus-xpc-test-client` verifies the round
+   trip with the hex compose sequence, which commits "A" if the
+   daemon is started with `IBUS_ENABLE_CTRL_SHIFT_U=1`.
+
 Both components are enabled by default on macOS and cannot be built on
 other platforms (`-Dmacos-client=false` / `-Dmacospanel=false` to
 disable them explicitly).
@@ -110,4 +144,8 @@ IBUS_ENABLE_CTRL_SHIFT_U=1 ibus-daemon --replace --verbose
 
  * The real macOS integration with Input Method Kit (IMK), which
    converts the NSEvent key events to the ibus key events and commits
-   texts through the IMK APIs, is not implemented yet.
+   texts through the IMK APIs, is not implemented yet.  The XPC
+   bridge provides the transport for it; the sandboxed IMK app would
+   connect to the `org.freedesktop.IBus.xpc` Mach service, export the
+   engine output callbacks and drive the input context with the
+   `IBusXpcInputContext` protocol in `client/xpc/main.mm`.

@@ -195,3 +195,8 @@ option('macospanel',
   value: false,
   description: 'Build the native macOS panel (macOS only)',
 )
+option('xpc-bridge',
+  type: 'boolean',
+  value: false,
+  description: 'Build the XPC bridge for the sandboxed macOS clients (macOS only)',
+)

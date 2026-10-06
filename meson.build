@@ -124,8 +124,10 @@ endif
 # cannot be built anywhere else.
 enable_macos_client = get_option('macos-client') or host_is_darwin
 enable_macospanel = get_option('macospanel') or host_is_darwin
-if not host_is_darwin and (enable_macos_client or enable_macospanel)
-  error('The macOS client and panel can be built on macOS only.')
+enable_xpc_bridge = get_option('xpc-bridge') or host_is_darwin
+if not host_is_darwin and (enable_macos_client or enable_macospanel or
+                           enable_xpc_bridge)
+  error('The macOS client, panel and XPC bridge can be built on macOS only.')
 endif
 if host_is_darwin
   add_languages('objcpp')
@@ -572,6 +574,7 @@ summary({
   'Build UI':                      enable_ui,
   'Build macOS client':            enable_macos_client,
   'Build macOS panel':             enable_macospanel,
+  'Build macOS XPC bridge':        enable_xpc_bridge,
   'Build engine':                  get_option('engine'),
   'Enable key snooper':            get_option('snooper'),
   'No snooper regexes':            get_option('no-snooper-apps'),
