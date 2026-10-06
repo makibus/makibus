@@ -246,7 +246,12 @@ sudo installer -pkg IBusMacOS-1.5.35.pkg -target /
 The layout is IBusIM.app in `/Library/Input Methods`, the bridge,
 the panel and the packaged libibus in `/usr/local/ibus-macos`, and
 the LaunchAgent in `/Library/LaunchAgents` (loaded automatically at
-the login).  The postinstall script registers the panel component in
+the login).  Note the upgrade relocation of the macOS Installer:
+when an IBusIM.app with the same bundle identifier already exists
+on the machine, the Installer upgrades it in place instead of
+installing to `/Library/Input Methods` (see the "relocated to" line
+of /var/log/install.log); remove the stale copy first on the
+development machines which carry the build output.  The postinstall script registers the panel component in
 the ibus component directory of the detected ibus base and
 bootstraps the LaunchAgent for the console user; when no base is
 detected it prints the `--panel=` fallback for the ibus-daemon
