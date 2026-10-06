@@ -34,7 +34,6 @@
 
 #import <AppKit/AppKit.h>
 #import <InputMethodKit/InputMethodKit.h>
-#import <ibus.h>
 
 #import "IBusInputController.h"
 #import "ibus-xpc.h"
@@ -64,6 +63,7 @@
 
 #import <Carbon/Carbon.h>
 #import <CoreGraphics/CoreGraphics.h>
+#include <string.h>
 
 #import "IBusKeyConvert.h"
 
@@ -119,7 +119,7 @@ _run_conversion_tests (void)
     CGEventSetFlags (cg, (CGEventFlags) kCGEventFlagMaskShift);
     NSEvent *shiftDown = [NSEvent eventWithCGEvent:cg];
     CFRelease (cg);
-    guint keyval = 0, keycode = 0;
+    uint32_t keyval = 0, keycode = 0;
     EXPECT ("modifier event Shift_L",
             ibus_modifier_event (shiftDown, &keyval, &keycode) &&
             keyval == IBUS_KEY_Shift_L && keycode == 50);
@@ -178,22 +178,22 @@ _run_selftest (void)
     dispatch_async (
             dispatch_get_global_queue (DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
             ^{
-        struct { guint keyval; guint keycode; NSUInteger state; } keys[] = {
+        struct { uint32_t keyval; uint32_t keycode; NSUInteger state; } keys[] = {
             { IBUS_KEY_U,      30, IBUS_SHIFT_MASK | IBUS_CONTROL_MASK },
-            { IBUS_KEY_4,      13, IBUS_SHIFT_MASK | IBUS_CONTROL_MASK },
-            { IBUS_KEY_1,      10, IBUS_SHIFT_MASK | IBUS_CONTROL_MASK },
+            { '4',             13, IBUS_SHIFT_MASK | IBUS_CONTROL_MASK },
+            { '1',             10, IBUS_SHIFT_MASK | IBUS_CONTROL_MASK },
             { IBUS_KEY_space,  65, IBUS_SHIFT_MASK | IBUS_CONTROL_MASK },
         };
-        for (size_t i = 0; i < G_N_ELEMENTS (keys); i++) {
-            const guint keyval = keys[i].keyval;
-            const guint keycode = keys[i].keycode;
+        for (size_t i = 0; i < sizeof (keys) / sizeof (keys[0]); i++) {
+            const uint32_t keyval = keys[i].keyval;
+            const uint32_t keycode = keys[i].keycode;
             const NSUInteger state = keys[i].state;
             dispatch_semaphore_t done = dispatch_semaphore_create (0);
             [client processKeyEventKeyval:keyval
                                   keycode:keycode
                                     state:state
                                      reply:^(BOOL handled) {
-                printf ("key %u handled: %d\n", keyval, handled);
+                printf ("key %u handled: %d\n", (unsigned) keyval, handled);
                 dispatch_semaphore_signal (done);
             }];
             dispatch_semaphore_wait (done,
@@ -221,7 +221,7 @@ main (int    argc,
       char **argv)
 {
     @autoreleasepool {
-        if (argc > 1 && g_strcmp0 (argv[1], "--selftest") == 0)
+        if (argc > 1 && strcmp (argv[1], "--selftest") == 0)
             return _run_selftest ();
 
         /* The IMK server name is the mach service name which the

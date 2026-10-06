@@ -25,8 +25,6 @@
 #import <Foundation/Foundation.h>
 #import <Foundation/NSXPCConnection.h>
 
-#import <ibus.h>
-
 /* The launchd Mach service name of the ibus XPC bridge. */
 #define IBUS_XPC_SERVICE_NAME "org.freedesktop.IBus.xpc"
 

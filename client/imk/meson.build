@@ -11,12 +11,10 @@ ibus_im_sources = files(
   'main.mm',
 )
 
-ibus_im_deps = [
-  glib_dep,
-  gobject_dep,
-  gio_dep,
-  ibus_dep,
-]
+# The front end is self-contained so that it can be distributed
+# independently of the ibus installation: the ibus keysyms and the
+# modifier masks come from ibus-keys.h instead of libibus.
+ibus_im_deps = []
 
 executable('ibus-im',
   ibus_im_sources,

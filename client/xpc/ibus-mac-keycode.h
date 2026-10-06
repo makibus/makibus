@@ -22,7 +22,7 @@
 #ifndef __IBUS_MAC_KEYCODE_H_
 #define __IBUS_MAC_KEYCODE_H_
 
-#include <glib.h>
+#include <stdint.h>
 
 /* XKB key codes, which are the Linux evdev key codes plus 8, indexed
  * by the macOS virtual key codes (kVK_ANSI_*) defined in
@@ -30,7 +30,7 @@
  * engines, e.g. the simple engine resolves the keyval from the
  * keycode with its XKB keymap table.  0 means the mapping is not
  * available. */
-static const guint16 ibus_mac_to_xkb_keycode[128] = {
+static const uint16_t ibus_mac_to_xkb_keycode[128] = {
     /* 0x00 */ 38,    /* A */
     /* 0x01 */ 39,    /* S */
     /* 0x02 */ 40,    /* D */
@@ -163,8 +163,8 @@ static const guint16 ibus_mac_to_xkb_keycode[128] = {
 
 /* Convert the NSEvent keyCode to the XKB keycode, i.e. the evdev
  * keycode plus 8. */
-static inline guint
-ibus_mac_keycode_to_xkb (guint mac_keycode)
+static inline uint32_t
+ibus_mac_keycode_to_xkb (uint32_t mac_keycode)
 {
     if (mac_keycode > 127)
         return 0;

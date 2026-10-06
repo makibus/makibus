@@ -48,8 +48,8 @@ static NSUInteger _last_modifier_flags = 0;
  * modifier press and release events. */
 - (void)_handleFlagsChanged:(NSEvent *)event
 {
-    guint keyval = 0;
-    guint keycode = 0;
+    uint32_t keyval = 0;
+    uint32_t keycode = 0;
     if (!ibus_modifier_event (event, &keyval, &keycode))
         return;
 
@@ -83,8 +83,8 @@ static NSUInteger _last_modifier_flags = 0;
     if (event.type != NSEventTypeKeyDown)
         return NO;
 
-    guint keyval = ibus_keyval_from_event (event);
-    guint keycode = ibus_mac_keycode_to_xkb (event.keyCode);
+    uint32_t keyval = ibus_keyval_from_event (event);
+    uint32_t keycode = ibus_mac_keycode_to_xkb (event.keyCode);
     NSUInteger state = ibus_state_from_modifier_flags (
             event.modifierFlags, NO);
     if (keyval == 0 && keycode == 0)

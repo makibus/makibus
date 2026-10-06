@@ -1,0 +1,47 @@
+#!/bin/sh
+# Install the ibus macOS integration package for the current user.
+#
+# The ibus-daemon, the engines and the panel are expected to be
+# installed already; this script only installs the XPC bridge, the
+# IMK front end and the LaunchAgent, and requires the Homebrew glib
+# formula for libibus.
+
+set -e
+
+SRC="$(cd "$(dirname "$0")" && pwd)"
+LIBIBUS="@IBUS_LIBDIR@"
+LIBDIR="$HOME/.local/lib/ibus-macos"
+IMDIR="$HOME/Library/Input Methods"
+AGENTS="$HOME/Library/LaunchAgents"
+SERVICE="org.freedesktop.IBus.xpc"
+
+echo "Installing the ibus XPC bridge to $LIBDIR"
+mkdir -p "$LIBDIR"
+cp "$SRC/lib/$LIBIBUS" "$LIBDIR/"
+cp "$SRC/libexec/ibus-xpc-bridge" "$LIBDIR/"
+
+echo "Installing IBusIM.app to $IMDIR"
+mkdir -p "$IMDIR"
+rm -rf "$IMDIR/IBusIM.app"
+cp -R "$SRC/IBusIM.app" "$IMDIR/"
+
+echo "Installing the LaunchAgent"
+mkdir -p "$AGENTS"
+sed -e "s|@libexecdir@/ibus-xpc-bridge|$LIBDIR/ibus-xpc-bridge|" \
+        "$SRC/LaunchAgents/$SERVICE.plist" > "$AGENTS/$SERVICE.plist"
+
+launchctl bootout "gui/$(id -u)/$SERVICE" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$AGENTS/$SERVICE.plist"
+
+cat <<'EOF'
+
+Done. Enable the input method in
+System Settings -> Keyboard -> Input Sources -> Edit -> + -> "IBus",
+after logging out and back in if the app was installed for the
+first time.
+
+The bridge connects to the ibus-daemon through the default address
+file (~/.config/ibus/bus/...).  If the daemon uses a custom
+IBUS_ADDRESS_FILE, publish it to the launchd agents with:
+  launchctl setenv IBUS_ADDRESS_FILE <path>
+EOF

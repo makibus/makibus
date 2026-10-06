@@ -24,9 +24,8 @@
 
 #import <AppKit/AppKit.h>
 
-#import <ibus.h>
-
-#import "ibus-mac-keycode.h"
+#import "ibus-keys.h"
+#import "../xpc/ibus-mac-keycode.h"
 
 /* Convert the NSEvent modifier flags to the ibus modifier state.
  * The Command key is mapped to IBUS_MOD4_MASK (Super) like the
@@ -36,12 +35,13 @@ NSUInteger ibus_state_from_modifier_flags (NSUInteger flags, BOOL release);
 /* Resolve the ibus keyval of a key down event: the printable
  * characters follow the case of the modifiers like the X11 keyboard
  * mapping and the function keys are resolved from the keycode. */
-guint ibus_keyval_from_event (NSEvent *event);
+uint32_t ibus_keyval_from_event (NSEvent *event);
 
 /* The ibus keyval and the keycode of a modifier key for the
  * NSFlagsChanged events, whose keyCode indicates the changed
  * modifier. */
-BOOL ibus_modifier_event (NSEvent *event, guint *keyval, guint *keycode);
+BOOL ibus_modifier_event (NSEvent *event,
+                          uint32_t *keyval, uint32_t *keycode);
 
 /* The NSEvent modifier flag bit of a modifier keycode. */
 NSUInteger ibus_modifier_bit_of_keycode (unsigned short keycode);

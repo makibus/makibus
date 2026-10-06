@@ -173,6 +173,41 @@ started with `IBUS_ENABLE_CTRL_SHIFT_U=1`:
 IBUS_ENABLE_CTRL_SHIFT_U=1 ibus-daemon --replace --verbose
 ```
 
+## Distribute the macOS integration package
+
+The XPC bridge and the IMK front end can be distributed
+independently of the ibus installation, as a single package:
+
+ * IBusIM.app is self-contained and only links the system
+   frameworks; the ibus keysyms of the front end come from the
+   `ibus-keys.h` header instead of libibus.
+ * The ibus-xpc-bridge links libibus, whose only transitive
+   dependency beyond the system libraries is the Homebrew glib
+   formula, and the packaged libibus copy is loaded through @rpath.
+
+Build and install the ibus daemon, the engines and the panel from
+the source, then assemble the package from the installed prefix:
+
+```sh
+meson setup build --prefix=$HOME/ibus-prefix   # -Dxpc-bridge=true -Dimk=true
+ninja -C build && ninja -C build install
+macos/build-integration.sh $HOME/ibus-prefix . 1.5.35
+```
+
+The users install the package for their own user, which requires
+the Homebrew glib formula:
+
+```sh
+brew install glib
+./install.sh    # in the unpacked IBusMacOS-<version> directory
+```
+
+The installer copies the bridge and libibus to
+`~/.local/lib/ibus-macos`, IBusIM.app to `~/Library/Input Methods`
+and the LaunchAgent to `~/Library/LaunchAgents`, and loads the
+agent.  Replace the ad-hoc code signatures with the Developer ID
+signatures for the real distributions.
+
 ## Known issues
 
  * The `/ibus/async-apis` test in `ibus-bus` can be flaky on macOS

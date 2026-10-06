@@ -22,6 +22,7 @@
 #import "IBusKeyConvert.h"
 
 #import <Carbon/Carbon.h>
+#include <ctype.h>
 
 NSUInteger
 ibus_state_from_modifier_flags (NSUInteger flags, BOOL release)
@@ -42,7 +43,7 @@ ibus_state_from_modifier_flags (NSUInteger flags, BOOL release)
     return state;
 }
 
-guint
+uint32_t
 ibus_keyval_from_event (NSEvent *event)
 {
     NSUInteger flags = event.modifierFlags &
@@ -72,13 +73,13 @@ ibus_keyval_from_event (NSEvent *event)
     unichar ch = [characters characterAtIndex:0];
     if (ch >= 'a' && ch <= 'z' && upper)
         ch = ch - 'a' + 'A';
-    if (ch < 0x80 && g_ascii_isprint ((gchar) ch))
-        return (guint) ch;
-    return ibus_unicode_to_keyval ((gunichar) ch);
+    if (ch < 0x80 && isprint ((int) ch))
+        return (uint32_t) ch;
+    return ibus_keyval_from_unicode ((uint32_t) ch);
 }
 
 BOOL
-ibus_modifier_event (NSEvent *event, guint *keyval, guint *keycode)
+ibus_modifier_event (NSEvent *event, uint32_t *keyval, uint32_t *keycode)
 {
     switch (event.keyCode) {
     case kVK_Shift:        *keyval = IBUS_KEY_Shift_L;   *keycode = 50;  break;
