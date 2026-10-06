@@ -8,6 +8,8 @@
 	<string>IBus</string>
 	<key>CFBundleExecutable</key>
 	<string>ibus-im</string>
+	<key>CFBundleIconFile</key>
+	<string>ibus.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.freedesktop.IBus.IM</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -26,9 +28,13 @@
 			<dict>
 				<key>TISIntendedLanguage</key>
 				<string>en</string>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>ibus.icns</string>
 			</dict>
 		</dict>
 	</dict>
+	<key>tsInputMethodIconFileKey</key>
+	<string>ibus.icns</string>
 	<key>InputMethodConnectionName</key>
 	<string>org.freedesktop.IBus.IM.Connection</string>
 	<key>InputMethodServerControllerClass</key>

@@ -39,3 +39,8 @@ configure_file(
   install: true,
   install_dir: get_option('libexecdir') / 'IBusIM.app' / 'Contents',
 )
+
+install_data(
+  'ibus.icns',
+  install_dir: get_option('libexecdir') / 'IBusIM.app' / 'Contents' / 'Resources',
+)
