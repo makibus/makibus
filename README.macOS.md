@@ -175,23 +175,40 @@ IBUS_ENABLE_CTRL_SHIFT_U=1 ibus-daemon --replace --verbose
 
 ## Distribute the macOS integration package
 
-The XPC bridge and the IMK front end can be distributed
-independently of the ibus installation, as a single package:
+The macOS integration ships as a single package which is independent
+of the ibus installation: the base is the pristine upstream ibus and
+the package provides everything macOS specific:
 
  * IBusIM.app is self-contained and only links the system
    frameworks; the ibus keysyms of the front end come from the
    `ibus-keys.h` header instead of libibus.
- * The ibus-xpc-bridge links libibus, whose only transitive
-   dependency beyond the system libraries is the Homebrew glib
-   formula, and the packaged libibus copy is loaded through @rpath.
+ * The ibus-xpc-bridge and the native macOS panel link libibus,
+   whose only transitive dependency beyond the system libraries is
+   the Homebrew glib formula, and the packaged libibus copy is
+   loaded through @rpath.
+ * The native macOS panel is registered in the ibus component
+   directory of the installed ibus, so the ibus-daemon spawns the
+   packaged panel with the restart supervision.
 
-Build and install the ibus daemon, the engines and the panel from
-the source, then assemble the package from the installed prefix:
+The base does not need the fork: the pristine upstream ibus builds
+on macOS with the meson options only, verified with the upstream
+master:
 
 ```sh
-meson setup build --prefix=$HOME/ibus-prefix   # -Dxpc-bridge=true -Dimk=true
+macos/build-upstream.sh master ~/.local/ibus
+```
+
+which configures `-Dtests=false -Dgtk-doc=false -Dappindicator=false
+-Dmemconf=true -Dxim=disabled -Dui=false -Demoji-dict=false
+-Dunicode-dict=false -Dx11-localedata-dir=<brew>/share/X11/locale`.
+
+Then assemble the package from an installed ibus prefix of the fork
+(the fork builds the bridge, the IMK front end and the panel for the
+package):
+
+```sh
 ninja -C build && ninja -C build install
-macos/build-integration.sh $HOME/ibus-prefix . 1.5.35
+macos/build-integration.sh <ibus-prefix> . 1.5.35
 ```
 
 The users install the package for their own user, which requires
@@ -202,11 +219,19 @@ brew install glib
 ./install.sh    # in the unpacked IBusMacOS-<version> directory
 ```
 
-The installer copies the bridge and libibus to
-`~/.local/lib/ibus-macos`, IBusIM.app to `~/Library/Input Methods`
-and the LaunchAgent to `~/Library/LaunchAgents`, and loads the
-agent.  Replace the ad-hoc code signatures with the Developer ID
+The installer copies the bridge, the panel and libibus to
+`~/.local/lib/ibus-macos`, IBusIM.app to `~/Library/Input Methods`,
+the LaunchAgent to `~/Library/LaunchAgents`, and registers the panel
+component in the ibus component directory of the base
+(`--panel=<path>` is printed as the fallback if the directory is not
+writable).  Replace the ad-hoc code signatures with the Developer ID
 signatures for the real distributions.
+
+The round trip was verified against the pristine upstream daemon:
+the upstream ibus-daemon spawns the packaged panel through the
+component XML (loading libibus from the package), and the packaged
+IMK front end completes the compose round trip through the packaged
+bridge, the upstream daemon and the upstream simple engine.
 
 ## Known issues
 

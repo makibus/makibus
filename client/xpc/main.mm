@@ -185,10 +185,15 @@ _flush_pending_on_connect (void)
     CONNECT ("enabled", _context_enabled_cb);
     CONNECT ("disabled", _context_disabled_cb);
 
+    /* The candidates and the auxiliary texts are rendered by the
+     * native macOS panel instead of the client: when the input
+     * context does not declare IBUS_CAP_LOOKUP_TABLE nor
+     * IBUS_CAP_AUXILIARY_TEXT, the ibus-daemon forwards the lookup
+     * table and the auxiliary text to the panel (see
+     * bus_input_context_update_lookup_table in bus/inputcontext.c). */
     ibus_input_context_set_capabilities (
             context,
-            IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT |
-            IBUS_CAP_AUXILIARY_TEXT | IBUS_CAP_LOOKUP_TABLE);
+            IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT);
 
     _context = context;
     reply (YES, nil);

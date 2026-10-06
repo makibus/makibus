@@ -1,24 +1,26 @@
 #!/bin/sh
 # Install the ibus macOS integration package for the current user.
 #
-# The ibus-daemon, the engines and the panel are expected to be
-# installed already; this script only installs the XPC bridge, the
-# IMK front end and the LaunchAgent, and requires the Homebrew glib
-# formula for libibus.
+# The ibus-daemon and the engines are expected to be installed
+# already; this script installs the XPC bridge, the native macOS
+# panel, the IMK front end and the LaunchAgent.  The Homebrew glib
+# formula is required by the packaged libibus.
 
 set -e
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 LIBIBUS="@IBUS_LIBDIR@"
-LIBDIR="$HOME/.local/lib/ibus-macos"
+BASE="$HOME/.local/lib/ibus-macos"
+LIBDIR="$BASE/lib"
+LIBEXECDIR="$BASE/libexec"
 IMDIR="$HOME/Library/Input Methods"
 AGENTS="$HOME/Library/LaunchAgents"
 SERVICE="org.freedesktop.IBus.xpc"
 
-echo "Installing the ibus XPC bridge to $LIBDIR"
-mkdir -p "$LIBDIR"
+echo "Installing the bridge and the panel to $BASE"
+mkdir -p "$LIBDIR" "$LIBEXECDIR"
 cp "$SRC/lib/$LIBIBUS" "$LIBDIR/"
-cp "$SRC/libexec/ibus-xpc-bridge" "$LIBDIR/"
+cp "$SRC/libexec/"* "$LIBEXECDIR/"
 
 echo "Installing IBusIM.app to $IMDIR"
 mkdir -p "$IMDIR"
@@ -27,21 +29,46 @@ cp -R "$SRC/IBusIM.app" "$IMDIR/"
 
 echo "Installing the LaunchAgent"
 mkdir -p "$AGENTS"
-sed -e "s|@libexecdir@/ibus-xpc-bridge|$LIBDIR/ibus-xpc-bridge|" \
+sed -e "s|@libexecdir@|$LIBEXECDIR|" \
         "$SRC/LaunchAgents/$SERVICE.plist" > "$AGENTS/$SERVICE.plist"
-
 launchctl bootout "gui/$(id -u)/$SERVICE" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENTS/$SERVICE.plist"
 
-cat <<'EOF'
+# Register the native macOS panel in the ibus component directory of
+# the installed ibus so that the ibus-daemon spawns the panel with
+# the restart supervision.
+IBUS_COMPONENT_DIR=""
+if command -v pkg-config > /dev/null 2>&1; then
+    for PCPATH in \
+            "$(pkg-config --variable=prefix ibus-1.0 2>/dev/null)/share/ibus/component" \
+            /opt/homebrew/share/ibus/component; do
+        if [ -d "$PCPATH" ]; then
+            IBUS_COMPONENT_DIR="$PCPATH"
+            break
+        fi
+    done
+fi
+if [ -f "$SRC/macospanel.xml" ] && [ -n "$IBUS_COMPONENT_DIR" ]; then
+    echo "Installing the macOS panel component to $IBUS_COMPONENT_DIR"
+    sed -e "s|@libexecdir@|$LIBEXECDIR|" \
+            "$SRC/macospanel.xml" > "$IBUS_COMPONENT_DIR/macospanel.xml"
+    PANEL_NOTE=""
+else
+    PANEL_NOTE="
+The macOS panel component could not be registered automatically.
+Pass the panel to the ibus-daemon explicitly:
+  ibus-daemon --panel=$LIBEXECDIR/ibus-ui-macospanel"
+fi
+
+cat <<EOF
 
 Done. Enable the input method in
 System Settings -> Keyboard -> Input Sources -> Edit -> + -> "IBus",
-after logging out and back in if the app was installed for the
+after logging out and back in again if the app was installed for the
 first time.
 
 The bridge connects to the ibus-daemon through the default address
 file (~/.config/ibus/bus/...).  If the daemon uses a custom
 IBUS_ADDRESS_FILE, publish it to the launchd agents with:
-  launchctl setenv IBUS_ADDRESS_FILE <path>
+  launchctl setenv IBUS_ADDRESS_FILE <path>$PANEL_NOTE
 EOF

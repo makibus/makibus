@@ -28,23 +28,38 @@ IBUS_LIBDIR="$(basename "$LIBIBUS")"
 rm -rf "$APP"
 mkdir -p "$APP/lib" "$APP/libexec" "$APP/LaunchAgents"
 
-# The components.  The installed plist contains the absolute
-# libexecdir of the build prefix; restore the placeholder so that
-# the user side installer fills the installation path.
+# The components.  The installed plist and the component XML contain
+# the absolute libexecdir of the build prefix; restore the
+# placeholders so that the user side installer fills the
+# installation path.
 cp -R "$PREFIX/libexec/IBusIM.app" "$APP/"
 cp "$PREFIX/libexec/ibus-xpc-bridge" "$APP/libexec/"
 sed -e "s|$PREFIX/libexec/ibus-xpc-bridge|@libexecdir@/ibus-xpc-bridge|" \
         "$PREFIX/share/ibus/org.freedesktop.IBus.xpc.plist" \
         > "$APP/LaunchAgents/$SERVICE.plist"
+
+# The native macOS panel with its component XML, which the
+# ibus-daemon reads from the ibus component directory to spawn the
+# panel with the restart supervision.
+PANEL_XML="$PREFIX/share/ibus/component/macospanel.xml"
+if [ -x "$PREFIX/libexec/ibus-ui-macospanel" ] && [ -f "$PANEL_XML" ]; then
+    cp "$PREFIX/libexec/ibus-ui-macospanel" "$APP/libexec/"
+    sed -e "s|$PREFIX/libexec/ibus-ui-macospanel|@libexecdir@/ibus-ui-macospanel|" \
+            "$PANEL_XML" > "$APP/macospanel.xml"
+fi
+
 cp "$LIBIBUS" "$APP/lib/"
 
 # Redirect the libibus references to the packaged copy through
 # @rpath, so that the binaries do not depend on the build prefix.
 install_name_tool -id "@rpath/$IBUS_LIBDIR" "$APP/lib/$IBUS_LIBDIR"
-install_name_tool -change "$PREFIX/lib/$IBUS_LIBDIR" \
-        "@rpath/$IBUS_LIBDIR" "$APP/libexec/ibus-xpc-bridge"
-install_name_tool -add_rpath "@executable_path/../lib" \
-        "$APP/libexec/ibus-xpc-bridge"
+for BIN in ibus-xpc-bridge ibus-ui-macospanel; do
+    [ -f "$APP/libexec/$BIN" ] || continue
+    install_name_tool -change "$PREFIX/lib/$IBUS_LIBDIR" \
+            "@rpath/$IBUS_LIBDIR" "$APP/libexec/$BIN"
+    install_name_tool -add_rpath "@executable_path/../lib" \
+            "$APP/libexec/$BIN"
+done
 install_name_tool -change "$PREFIX/lib/$IBUS_LIBDIR" \
         "@rpath/$IBUS_LIBDIR" "$APP/IBusIM.app/Contents/MacOS/ibus-im"
 install_name_tool -add_rpath "@executable_path/../../../lib" \
@@ -53,7 +68,10 @@ install_name_tool -add_rpath "@executable_path/../../../lib" \
 # Sign the binaries; the real distributions replace the ad-hoc
 # signatures with the Developer ID ones.
 codesign --force --sign - "$APP/lib/$IBUS_LIBDIR" >/dev/null 2>&1
-codesign --force --sign - "$APP/libexec/ibus-xpc-bridge" >/dev/null 2>&1
+for BIN in ibus-xpc-bridge ibus-ui-macospanel; do
+    [ -f "$APP/libexec/$BIN" ] || continue
+    codesign --force --sign - "$APP/libexec/$BIN" >/dev/null 2>&1
+done
 codesign --force --sign - "$APP/IBusIM.app" >/dev/null 2>&1
 
 # The user side installer
