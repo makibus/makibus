@@ -25,6 +25,7 @@ set -e
 export COPYFILE_DISABLE=1
 
 PKGDIR="$1"
+COMPONENT_PLIST="$(mktemp -d)/components.plist"
 OUT="${2:-IBusMacOS.pkg}"
 VERSION="${3:-1.5.35}"
 
@@ -72,11 +73,30 @@ chmod +x "$SCRIPTS/postinstall"
 xattr -rc "$STAGING" 2>/dev/null || true
 find "$STAGING" -name '._*' -delete
 
+# Disable the relocation of the app bundle: the macOS Installer
+# upgrades an existing app with the same bundle identifier in place,
+# which on a development machine would divert the installation to
+# the build output copy instead of /Library/Input Methods.
+pkgbuild --analyze --root "$STAGING" "$COMPONENT_PLIST" >/dev/null
+plutil -replace     "0.RootRelativeBundlePath" -string "Library/Input Methods/IBusIM.app" \
+    "$COMPONENT_PLIST" >/dev/null 2>&1 || true
+python3 - "$COMPONENT_PLIST" <<'PYEOF2'
+import plistlib, sys
+with open(sys.argv[1], "rb") as f:
+    comps = plistlib.load(f)
+for c in comps:
+    if c.get("RootRelativeBundlePath", "").endswith(".app"):
+        c["IsRelocatable"] = False
+with open(sys.argv[1], "wb") as f:
+    plistlib.dump(comps, f)
+PYEOF2
+
 pkgbuild \
     --root "$STAGING" \
     --identifier org.freedesktop.IBus.macos \
     --version "$VERSION" \
     --scripts "$SCRIPTS" \
+    --component-plist "$COMPONENT_PLIST" \
     --install-location / \
     "$OUT"
 

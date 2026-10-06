@@ -224,10 +224,11 @@ main (int    argc,
         if (argc > 1 && strcmp (argv[1], "--selftest") == 0)
             return _run_selftest ();
 
-        /* The IMK server name is the mach service name which the
-         * system input method host connects to. */
+        /* The connection name must match the
+         * InputMethodConnectionName of the Info.plist, which the
+         * system input method host uses to connect. */
         IMKServer *server = [[IMKServer alloc]
-                initWithName:@"org.freedesktop.IBus.IM"
+                initWithName:@"org.freedesktop.IBus.IM.Connection"
                 bundleIdentifier:[[NSBundle mainBundle] bundleIdentifier]];
 
         [[NSApplication sharedApplication] run];
