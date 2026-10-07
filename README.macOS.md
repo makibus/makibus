@@ -273,6 +273,33 @@ mkdir -p $TAP/Casks && cp macos/ibus-macos.rb $TAP/Casks/
 HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask --dry-run ibus/test/ibus-macos
 ```
 
+### Input source registration on macOS 26 (Tahoe)
+
+Installing IBusIM.app makes the input method runnable but it does not
+yet appear in System Settings -> Keyboard -> Input Sources on macOS
+26: the input source must also be registered with Text Input
+Services.  The registration mechanism that the working Fcitx5 macOS
+installer uses is TISRegisterInputSource() followed by
+TISEnableInputSource(), implemented in the ibus-im-register tool
+installed inside the app bundle:
+
+```sh
+"/Library/Input Methods/IBusIM.app/Contents/MacOS/ibus-im-register" \
+    "/Library/Input Methods/IBusIM.app"
+```
+
+On this macOS 26 machine the call returns without error but does not
+take effect (it is a silent no-op even for a nonexistent path, from
+the command line, from sudo, and from a bundled application
+context), and the folder scans at login do not pick up new ad-hoc
+signed input method bundles either; only the input sources which
+were registered on earlier macOS releases keep working.  The
+pristine upstream Fcitx5 installer is itself ad-hoc signed, so the
+exact requirement of Tahoe (Developer ID, notarization, or a new
+registration service) is not yet identified; until it is, enable
+the input source only after the registration succeeds, or verify the
+front end with the selftest.
+
 ## Known issues
 
  * The `/ibus/async-apis` test in `ibus-bus` can be flaky on macOS

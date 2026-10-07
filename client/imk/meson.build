@@ -16,6 +16,20 @@ ibus_im_sources = files(
 # modifier masks come from ibus-keys.h instead of libibus.
 ibus_im_deps = []
 
+executable('ibus-im-register',
+  files('ibus-im-register.mm'),
+  dependencies: ibus_im_deps,
+  include_directories: [ config_h_inc,
+                         include_directories('../xpc') ],
+  objcpp_args: [ '-fobjc-arc' ],
+  link_args: [
+    '-framework', 'Foundation',
+    '-framework', 'Carbon',
+  ],
+  install: true,
+  install_dir: get_option('libexecdir') / 'IBusIM.app' / 'Contents' / 'MacOS',
+)
+
 executable('ibus-im',
   ibus_im_sources,
   dependencies: ibus_im_deps,
