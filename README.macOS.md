@@ -300,6 +300,18 @@ registration service) is not yet identified; until it is, enable
 the input source only after the registration succeeds, or verify the
 front end with the selftest.
 
+This is a known macOS 26 ecosystem-wide regression, not specific to
+ibus: the Kiro/CodeWhisperer input method of the Amazon Q Developer
+CLI reports the identical symptoms (the registration step hangs, the
+input method never appears in the input sources, lsregister and
+reinstalls do not help; see aws/amazon-q-developer-cli#3901).  The
+Fcitx5 macOS project signs with an ad-hoc signature plus
+com.apple.security.get-task-allow like this fork, which also does
+not change the outcome, and its community reports of Tahoe are from
+upgraded installations which were registered on earlier releases.
+The registration tool is kept in place for the Developer ID
+distributions and for when the system behavior is clarified.
+
 ## Known issues
 
  * The `/ibus/async-apis` test in `ibus-bus` can be flaky on macOS
