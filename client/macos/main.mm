@@ -400,10 +400,14 @@ _bus_connected_cb (IBusBus *bus,
     g_signal_connect (_context, "update-lookup-table",
                       G_CALLBACK (_context_update_lookup_table_cb), NULL);
 
+    /* Do not declare IBUS_CAP_LOOKUP_TABLE nor
+     * IBUS_CAP_AUXILIARY_TEXT so that the ibus-daemon forwards the
+     * candidates and the auxiliary texts to the panel, which is the
+     * behavior to verify with this client; the daemon logs the
+     * lookup tables of the panel with the -v verbose option. */
     ibus_input_context_set_capabilities (
             _context,
-            IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT |
-            IBUS_CAP_AUXILIARY_TEXT | IBUS_CAP_LOOKUP_TABLE);
+            IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT);
     /* ibus-daemon runs in the global engine mode by default and the
      * per-context SetEngine is rejected there.  Assign the global
      * engine instead and the focused input context will use it. */

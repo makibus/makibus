@@ -173,6 +173,38 @@ started with `IBUS_ENABLE_CTRL_SHIFT_U=1`:
 IBUS_ENABLE_CTRL_SHIFT_U=1 ibus-daemon --replace --verbose
 ```
 
+## Testing layers
+
+The stack can be tested layer by layer, without the higher layers:
+
+* **D-Bus layer** (ibus-daemon, engines and the panel, without the
+  XPC bridge and the IMK front end): drive the engine with the stdin
+  of the test client, which does not declare the lookup table
+  capability so that the candidates are forwarded to the panel:
+
+  ```sh
+  printf 'nihao\n' | <prefix>/libexec/ibus-macos-client rime
+  ```
+
+* **XPC layer** (adds the ibus-xpc-bridge, without the IMK front
+  end): the test client sends the hex compose sequence by default
+  and the plain text with --keys:
+
+  ```sh
+  <prefix>/libexec/ibus-xpc-test-client             # commits "A"
+  <prefix>/libexec/ibus-xpc-test-client --keys rime nihao
+  ```
+
+* **Full stack** (adds IBusIM.app): ibus-im --selftest covers the
+  NSEvent conversions offline and the compose round trip, and
+  ibus-im --keys drives the real engines.
+
+  The panel data flow is observed in the ibus-daemon log started
+  with G_MESSAGES_DEBUG=all (the focus-in and the lookup table
+  g_debug of the panel), and the candidate window is verified on
+  the screen with CGWindowListCopyWindowInfo filtered by the panel
+  pid while the candidates are visible.
+
 ## Distribute the macOS integration package
 
 The macOS integration ships as a single package which is independent

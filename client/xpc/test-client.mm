@@ -29,6 +29,7 @@
 #import <ibus.h>
 
 #include "ibus-xpc.h"
+#include "ibus-mac-keycode.h"
 
 @interface IBusXpcTestOutput : NSObject <IBusXpcEngineOutput>
 @property (nonatomic, assign) BOOL gotCommit;
@@ -70,11 +71,104 @@
 
 @end
 
+static int
+_run_keys (const char *engine_name, const char *keys)
+{
+    IBusXpcTestOutput *output = [[IBusXpcTestOutput alloc] init];
+
+    NSXPCConnection *connection =
+            [[NSXPCConnection alloc]
+                    initWithMachServiceName:@IBUS_XPC_SERVICE_NAME
+                                    options:0];
+    connection.exportedInterface =
+            [NSXPCInterface
+                    interfaceWithProtocol:@protocol
+                            (IBusXpcEngineOutput)];
+    connection.exportedObject = output;
+    connection.remoteObjectInterface =
+            [NSXPCInterface
+                    interfaceWithProtocol:@protocol
+                            (IBusXpcInputContext)];
+    [connection resume];
+
+    id<IBusXpcInputContext> ic =
+            (id<IBusXpcInputContext>) [connection
+                    remoteObjectProxyWithErrorHandler:^(NSError *error) {
+                printf (">>> XPC ERROR: %s\n",
+                        error.localizedDescription.UTF8String);
+            }];
+
+    dispatch_semaphore_t created = dispatch_semaphore_create (0);
+    [ic createInputContextWithName:@"xpc-keys"
+                             reply:^(BOOL ok,
+                                     NSString *error) {
+        if (!ok) {
+            printf ("createInputContext failed: %s\n",
+                    error.UTF8String);
+            exit (EXIT_FAILURE);
+        }
+        dispatch_semaphore_signal (created);
+    }];
+    if (dispatch_semaphore_wait (created,
+            dispatch_time (DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC))) {
+        printf ("timeout to create the input context\n");
+        return EXIT_FAILURE;
+    }
+    [ic setGlobalEngine:@(engine_name)
+                  reply:^(BOOL ok, NSString *error) {
+        if (!ok)
+            printf ("setGlobalEngine failed: %s\n",
+                    error.UTF8String);
+    }];
+    [ic focusIn];
+    /* Wait for the asynchronous engine spawn and binding. */
+    sleep (2);
+
+    __block BOOL got_output = NO;
+    for (const char *p = keys; *p != '\0'; p++) {
+        const uint32_t keyval = (uint32_t) *p;
+        const uint32_t keycode = ibus_keycode_for_ascii (*p);
+        dispatch_semaphore_t replied = dispatch_semaphore_create (0);
+        [ic processKeyEventKeyval:keyval
+                          keycode:keycode
+                            state:0
+                             reply:^(BOOL handled) {
+            printf ("key '%c' handled: %d\n", *p, handled);
+            if (handled)
+                got_output = YES;
+            dispatch_semaphore_signal (replied);
+        }];
+        dispatch_semaphore_wait (replied,
+                dispatch_time (DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+        [ic processKeyEventKeyval:keyval
+                          keycode:keycode
+                            state:IBUS_RELEASE_MASK
+                           reply:^(BOOL handled) {}];
+        usleep (100000);
+    }
+    /* Let the async outputs arrive. */
+    sleep (1);
+
+    printf (got_output ? "XPC keys round trip OK\n"
+                       : "no engine output\n");
+    [connection invalidate];
+    return got_output ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int
 main (int    argc,
       char **argv)
 {
     @autoreleasepool {
+        /* --keys <engine> <text> sends the plain ASCII text to the
+         * given engine, e.g. --keys rime nihao; the default run is
+         * the hex compose sequence which commits "A" with the
+         * xkb:us::eng engine. */
+        if (argc > 1 && strcmp (argv[1], "--keys") == 0) {
+            const char *engine = argc > 2 ? argv[2] : "xkb:us::eng";
+            const char *keys = argc > 3 ? argv[3] : "";
+            return _run_keys (engine, keys);
+        }
         IBusXpcTestOutput *output = [[IBusXpcTestOutput alloc] init];
 
         NSXPCConnection *connection =
