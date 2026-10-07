@@ -10,8 +10,11 @@
 # placeholders filled (the sed of an already filled template is a
 # silent no-op, which once pointed the daemon at a stale panel).
 #
-# Usage: macos/test-env.sh [prefix] [panel-path]
-#   prefix     the base prefix; the default is /tmp/ibus-test-env
+# Usage: macos/test-env.sh <base-install-prefix> [panel-path]
+#   <base-install-prefix>  the install prefix of the ibus base (the
+#                          --prefix of macos/build-upstream.sh, e.g.
+#                          /tmp/ibus-test-env/prefix); the default
+#                          is /tmp/ibus-test-env/prefix
 #   panel-path the macospanel binary of the build to test; the
 #              default is taken from the ibus prefix of this source
 #              tree at build-install/prefix
@@ -22,10 +25,18 @@
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PREFIX="${1:-/tmp/ibus-test-env}"
+PREFIX="${1:-/tmp/ibus-test-env/prefix}"
 PANEL="${2:-$ROOT/build-install/prefix/libexec/ibus-ui-macospanel}"
 DATA_DIR="$PREFIX/share/rime-data"
 LOG="${IBUS_TEST_LOG:-/tmp/ibus-test-env-daemon.log}"
+
+# Guard against the historical layout confusion: a base installed
+# one directory above the given prefix shadows the components.
+if [ -x "$(dirname "$PREFIX")/bin/ibus-daemon" ] &&
+   [ "$(dirname "$PREFIX")/bin/ibus-daemon" != "$PREFIX/bin/ibus-daemon" ]; then
+    echo "Warning: another ibus base exists at $(dirname "$PREFIX");" \
+         "remove it to avoid the component confusion." >&2
+fi
 
 [ -x "$PANEL" ] || {
     echo "Panel not found at $PANEL;" \
@@ -98,7 +109,20 @@ rm -rf "$HOME/.config/ibus/bus"
 export DBUS_SESSION_BUS_ADDRESS=$(mkdir -p /tmp/ibus-test-session && \
         dbus-daemon --session --fork --print-address=1 \
                 --address=unix:tmpdir=/tmp/ibus-test-session)
-G_MESSAGES_DEBUG=all IBUS_MACOSPANEL_VERTICAL=1 "$PREFIX/bin/ibus-daemon" --replace -v > "$LOG" 2>&1 &
+# G_MESSAGES_DEBUG must not be "all": the daemon passes it to the
+# component engine enumeration children, whose g_debug output goes to
+# the stdout being parsed as the engine XML and breaks the parse.
+# Filter by the IBUS log domain of the panel instead.
+# The engines read their GSettings schemas (e.g. libpinyin); compile
+# the schemas of the base if needed and point the engines at them.
+if [ -d "$PREFIX/share/glib-2.0/schemas" ] &&
+        [ ! -f "$PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
+    glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
+fi
+if [ -f "$PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
+    export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
+fi
+G_MESSAGES_DEBUG=IBUS IBUS_MACOSPANEL_VERTICAL=1 "$PREFIX/bin/ibus-daemon" --replace -v > "$LOG" 2>&1 &
 sleep 5
 
 echo "The daemon is running (log: $LOG, address file: default)."

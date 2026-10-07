@@ -386,6 +386,33 @@ cmake --build build && cmake --install build
 # pin the schema with ~/.config/ibus/rime/default.custom.yaml.
 ```
 
+The real engines need no change of this port; the verified matrix:
+
+| Engine | Build on macOS | Notes |
+|---|---|---|
+| ibus-rime | CMake, Homebrew librime | the data set of prelude/luna-pinyin/essay; works end to end |
+| ibus-libpinyin | autotools, libpinyin git master | see the three environment pitfalls below |
+
+The libpinyin verification surfaced three macOS pitfalls which apply
+to the other engines of the same patterns:
+
+1. The Homebrew libpinyin release lacks the APIs which the current
+   ibus-libpinyin expects (the git master of both are the pair), and
+   the libpinyin export list (src/libpinyin.exp) misses the new
+   symbols on Apple's ld, which uses -exported_symbols_list; a
+   wildcard `_pinyin_*` entry covers it.
+2. The engines which enumerate their engines dynamically with
+   `<engines exec="... --xml">` must not run with
+   G_MESSAGES_DEBUG=all: the daemon passes the environment to the
+   enumeration child, whose g_debug output goes to the stdout being
+   parsed as the engine XML and the parse fails on the very first
+   line.  test-env.sh filters by the IBUS log domain instead and the
+   panel carries -DG_LOG_DOMAIN="IBUS".
+3. The engines which read GSettings (libpinyin) need the compiled
+   schemas: glib-compile-schemas of the base prefix and
+   GSETTINGS_SCHEMA_DIR for the engine processes, both wired into
+   test-env.sh.
+
 Then the engine shows up in the IMK engine menu and:
 
 ```sh
