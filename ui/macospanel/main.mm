@@ -51,16 +51,22 @@ static NSApplication *_app = NULL;
  * bottom-left based coordinates when the candidates are shown. */
 static NSRect _cursor_rect = { .origin = { 0, 0 }, .size = { 0, 0 } };
 
-/* The last lookup table and the auxiliary text, kept for the
- * partial updates of the auxiliary text. */
+/* The last lookup table, the auxiliary text and the pre-edit text,
+ * kept for the partial updates: the engines send them as the
+ * separate signals and the window renders them together. */
 static IBusLookupTable *_last_table = NULL;
 static NSAttributedString *_auxiliary = nil;
+static NSAttributedString *_preedit = nil;
+static NSUInteger _preedit_cursor = 0;
+static BOOL _preedit_visible = FALSE;
 
 /* The engines which do not set the orientation of the lookup table
  * (e.g. ibus-rime) get the horizontal default; the users of the
  * vertical Chinese panels can force the vertical layout with
  * IBUS_MACOSPANEL_VERTICAL=1. */
 static BOOL _force_vertical = NO;
+
+static void _rerender (void);
 
 #pragma mark Candidate view
 
@@ -73,15 +79,20 @@ static BOOL _force_vertical = NO;
     NSInteger _hover_index;
     BOOL _vertical;
     CGFloat _footer_height;
+    CGFloat _header_height;
+    NSAttributedString *_preedit;
+    NSUInteger _preedit_cursor;
     void (^_page_handler) (NSInteger delta);
 }
 
 - (void)setCandidates:(NSArray<NSAttributedString *> *)candidates
          cursorIndex:(NSInteger)index
-           auxiliary:(NSAttributedString *)auxiliary
+           auxiliary:(NSAttributedString * _Nullable)auxiliary
              pageInfo:(NSString * _Nullable)page_info
              vertical:(BOOL)vertical
          pageHandler:(void (^ _Nullable) (NSInteger delta))handler;
+- (void)setPreedit:(NSAttributedString * _Nullable)preedit
+             cursor:(NSUInteger)cursor;
 - (NSInteger)candidateIndexAtPoint:(NSPoint)point;
 
 @end
@@ -113,6 +124,13 @@ static BOOL _force_vertical = NO;
     _hover_index = -1;
     _page_handler = handler;
 
+    /* The pre-edit text is rendered in the header above the
+     * candidates, e.g. the composition of the engines which do not
+     * embed it in the client. */
+    _header_height = 0.0;
+    if (_preedit != nil)
+        _header_height = _preedit.size.height + 8.0;
+
     /* Keep the frame of each candidate for the mouse hit test, the
      * highlight and the hover. */
     NSMutableArray *frames = [NSMutableArray array];
@@ -125,7 +143,7 @@ static BOOL _force_vertical = NO;
             row_height = MAX (row_height, size.height + 8.0);
             row_width = MAX (row_width, size.width + 12.0);
         }
-        CGFloat y = 6.0;
+        CGFloat y = 6.0 + _header_height;
         for (NSUInteger i = 0; i < candidates.count; i++) {
             [frames addObject:
                     [NSValue valueWithRect:
@@ -136,9 +154,10 @@ static BOOL _force_vertical = NO;
     else {
         /* A single row. */
         CGFloat x = 8.0;
+        CGFloat y = 6.0 + _header_height;
         for (NSAttributedString *candidate in candidates) {
             NSSize size = [candidate size];
-            NSRect frame = NSMakeRect (x, 6.0,
+            NSRect frame = NSMakeRect (x, y,
                                        size.width + 12.0,
                                        size.height + 8.0);
             [frames addObject:[NSValue valueWithRect:frame]];
@@ -157,6 +176,41 @@ static BOOL _force_vertical = NO;
         _footer_height = MAX (_footer_height, 16.0);
 
     [self setNeedsDisplay:YES];
+}
+
+- (void)setPreedit:(NSAttributedString * _Nullable)preedit
+             cursor:(NSUInteger)cursor
+{
+    _preedit = preedit;
+    _preedit_cursor = cursor;
+    _header_height = (preedit != nil) ? preedit.size.height + 8.0 : 0.0;
+    [self setNeedsDisplay:YES];
+}
+
+/* The caret position of the pre-edit cursor in the rendered text
+ * width, converting the character offset to the rendering width. */
+- (CGFloat)_preeditCursorX:(NSAttributedString *)preedit
+{
+    NSString *string = preedit.string;
+    NSUInteger utf16 = 0;
+    for (NSUInteger i = 0;
+         i < _preedit_cursor && utf16 < string.length; i++) {
+        NSRange range = [string
+                rangeOfComposedCharacterSequenceAtIndex:utf16];
+        utf16 = NSMaxRange (range);
+    }
+    __block NSDictionary *attrs = @{};
+    [preedit enumerateAttributesInRange:
+            NSMakeRange (0, MIN (utf16, preedit.length))
+                          options:0
+                       usingBlock:^(NSDictionary *a, NSRange r, BOOL *stop) {
+        attrs = a;
+    }];
+    NSAttributedString *head =
+            [[NSAttributedString alloc] initWithString:
+                    [string substringToIndex:utf16]
+                                             attributes:attrs];
+    return head.size.width;
 }
 
 - (NSInteger)candidateIndexAtPoint:(NSPoint)point
@@ -213,6 +267,17 @@ static BOOL _force_vertical = NO;
         NSRect frame = _candidate_frames[i].rectValue;
         [_candidates[i] drawAtPoint:NSMakePoint (frame.origin.x + 6.0,
                                                  frame.origin.y + 4.0)];
+    }
+
+    if (_header_height > 0.0 && _preedit != nil) {
+        NSPoint origin = NSMakePoint (8.0, 4.0);
+        [_preedit drawAtPoint:origin];
+        /* The composition caret at the pre-edit cursor position. */
+        CGFloat caret_x = origin.x + [self _preeditCursorX:_preedit];
+        NSRect caret = NSMakeRect (caret_x, origin.y - 1.0,
+                                   1.5, _preedit.size.height + 2.0);
+        [[NSColor textColor] setFill];
+        NSRectFillUsingOperation (caret, NSCompositingOperationSourceOver);
     }
 
     if (_footer_height > 0.0) {
@@ -315,7 +380,7 @@ static BOOL _force_vertical = NO;
                         .rectValue) + 8.0;
         height = NSMaxY (_candidate_frames[0].rectValue) + 2.0;
     }
-    height += _footer_height;
+    height += _header_height + _footer_height;
     return NSMakeSize (width, height + 4.0);
 }
 
@@ -334,6 +399,10 @@ static BOOL _force_vertical = NO;
               pageInfo:(NSString * _Nullable)page_info
               vertical:(BOOL)vertical
           pageHandler:(void (^ _Nullable) (NSInteger delta))handler
+               around:(NSRect)cursorRect;
+- (void)showPreedit:(NSAttributedString * _Nullable)preedit
+             cursor:(NSUInteger)cursor
+             vertical:(BOOL)vertical
                around:(NSRect)cursorRect;
 - (void)hide;
 
@@ -398,6 +467,7 @@ static BOOL _force_vertical = NO;
                  pageInfo:page_info
                  vertical:vertical
              pageHandler:handler];
+    [_view setPreedit:_preedit cursor:_preedit_cursor];
 
     NSSize size = [_view intrinsicContentSize];
     if (size.width <= 0 || size.height <= 0) {
@@ -417,6 +487,46 @@ static BOOL _force_vertical = NO;
         y = screen_top - cursorRect.origin.y + 4.0;
 
     /* Clamp the candidates within the screen. */
+    x += screen.frame.origin.x;
+    if (x + size.width > NSMaxX (screen.visibleFrame))
+        x = NSMaxX (screen.visibleFrame) - size.width;
+    if (x < screen.visibleFrame.origin.x)
+        x = screen.visibleFrame.origin.x;
+
+    [_window setFrame:NSMakeRect (x, y, size.width, size.height)
+              display:YES];
+    [_window orderFront:nil];
+}
+
+- (void)showPreedit:(NSAttributedString * _Nullable)preedit
+             cursor:(NSUInteger)cursor
+             vertical:(BOOL)vertical
+               around:(NSRect)cursorRect
+{
+    NSScreen *screen = [CandidateWindow screenForCursorRect:cursorRect];
+    if (screen == nil || preedit == nil) {
+        [self hide];
+        return;
+    }
+    [_view setCandidates:@[]
+             cursorIndex:-1
+               auxiliary:nil
+                 pageInfo:nil
+                 vertical:vertical
+             pageHandler:nil];
+    [_view setPreedit:preedit cursor:cursor];
+
+    NSSize size = [_view intrinsicContentSize];
+    if (size.width <= 0 || size.height <= 0) {
+        [self hide];
+        return;
+    }
+
+    CGFloat screen_top = NSMaxY (screen.frame);
+    CGFloat x = cursorRect.origin.x - screen.frame.origin.x;
+    CGFloat y = screen_top - NSMaxY (cursorRect) - size.height - 4.0;
+    if (y < screen.visibleFrame.origin.y)
+        y = screen_top - cursorRect.origin.y + 4.0;
     x += screen.frame.origin.x;
     if (x + size.width > NSMaxX (screen.visibleFrame))
         x = NSMaxX (screen.visibleFrame) - size.width;
@@ -508,6 +618,7 @@ _show_lookup_table (IBusLookupTable *table)
                               _page (delta);
                           }
                                around:_cursor_rect];
+    (void) _preedit_visible;
 }
 
 static void
@@ -529,7 +640,7 @@ _update_lookup_table_cb (IBusPanelService *panel,
     else {
         g_clear_object (&_last_table);
         _auxiliary = nil;
-        [_candidate_window hide];
+        _rerender ();
     }
 }
 
@@ -546,7 +657,7 @@ _hide_lookup_table_cb (IBusPanelService *panel,
 {
     g_clear_object (&_last_table);
     _auxiliary = nil;
-    [_candidate_window hide];
+    _rerender ();
 }
 
 static void
@@ -561,6 +672,58 @@ _set_cursor_location_cb (IBusPanelService *panel,
 }
 
 static void
+_rerender (void)
+{
+    if (_last_table != NULL)
+        _show_lookup_table (_last_table);
+    else if (_preedit_visible && _preedit != nil)
+        [_candidate_window showPreedit:_preedit
+                                 cursor:_preedit_cursor
+                               vertical:FALSE
+                                 around:_cursor_rect];
+    else
+        [_candidate_window hide];
+}
+
+static void
+_update_preedit_text_cb (IBusPanelService *panel,
+                         IBusText         *text,
+                         guint             cursor_pos,
+                         gboolean          visible,
+                         gpointer          user_data)
+{
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:14.0],
+        NSForegroundColorAttributeName: [NSColor textColor],
+    };
+    _preedit = [[NSAttributedString alloc]
+            initWithString:[NSString stringWithUTF8String:text->text]
+              attributes:attributes];
+    _preedit_cursor = cursor_pos;
+    _preedit_visible = (visible != FALSE);
+    g_debug ("panel preedit: \"%s\" cursor:%u visible:%d",
+             text->text, cursor_pos, visible);
+    _rerender ();
+}
+
+static void
+_show_preedit_text_cb (IBusPanelService *panel,
+                       gpointer          user_data)
+{
+    _preedit_visible = TRUE;
+    _rerender ();
+}
+
+static void
+_hide_preedit_text_cb (IBusPanelService *panel,
+                       gpointer          user_data)
+{
+    _preedit_visible = FALSE;
+    _preedit = nil;
+    _rerender ();
+}
+
+static void
 _update_auxiliary_text_cb (IBusPanelService *panel,
                            IBusText         *text,
                            gboolean          visible,
@@ -568,8 +731,7 @@ _update_auxiliary_text_cb (IBusPanelService *panel,
 {
     if (!visible) {
         _auxiliary = nil;
-        if (_last_table != NULL)
-            _show_lookup_table (_last_table);
+        _rerender ();
         return;
     }
     NSDictionary *attributes = @{
@@ -582,8 +744,7 @@ _update_auxiliary_text_cb (IBusPanelService *panel,
                       attributes:attributes];
     /* The auxiliary text arrives after the lookup table of the same
      * key; render it together with the last table. */
-    if (_last_table != NULL)
-        _show_lookup_table (_last_table);
+    _rerender ();
 }
 
 static void
@@ -643,6 +804,12 @@ _register_panel_service (void)
                       G_CALLBACK (_set_cursor_location_cb), NULL);
     g_signal_connect (_panel, "update-auxiliary-text",
                       G_CALLBACK (_update_auxiliary_text_cb), NULL);
+    g_signal_connect (_panel, "update-preedit-text",
+                      G_CALLBACK (_update_preedit_text_cb), NULL);
+    g_signal_connect (_panel, "show-preedit-text",
+                      G_CALLBACK (_show_preedit_text_cb), NULL);
+    g_signal_connect (_panel, "hide-preedit-text",
+                      G_CALLBACK (_hide_preedit_text_cb), NULL);
     g_signal_connect (_panel, "focus-in",
                       G_CALLBACK (_focus_in_cb), NULL);
     g_signal_connect (_panel, "focus-out",

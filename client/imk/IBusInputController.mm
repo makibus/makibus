@@ -194,8 +194,17 @@ static NSUInteger _last_modifier_flags = 0;
             replacementRange:NSMakeRange (NSNotFound, NSNotFound)];
         return;
     }
+    /* The ibus pre-edit cursor is a character offset while the IMK
+     * selection range is in the UTF-16 units of the string. */
+    NSUInteger utf16_cursor = 0;
+    for (NSUInteger i = 0;
+         i < cursor && utf16_cursor < text.length; i++) {
+        NSRange range = [text
+                rangeOfComposedCharacterSequenceAtIndex:utf16_cursor];
+        utf16_cursor = NSMaxRange (range);
+    }
     [input setMarkedText:text
-            selectionRange:NSMakeRange (cursor, 0)
+            selectionRange:NSMakeRange (utf16_cursor, 0)
         replacementRange:NSMakeRange (NSNotFound, NSNotFound)];
 }
 

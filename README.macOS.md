@@ -24,8 +24,15 @@ native components are added for macOS:
    mouse wheel turns the pages (PageUp/PageDown back to the daemon),
    the candidates are highlighted on hover and on click
    (CandidateClicked), the page number is shown with multiple pages,
-   the auxiliary text is rendered in the footer, and the window
-   follows the text cursor across the multiple displays.
+   the auxiliary text is rendered in the footer, the panel-side
+   pre-edit text (the composition of the clients without the inline
+   pre-edit, or with the embed-preedit-text config disabled) is
+   rendered in the header with the caret at the pre-edit cursor, and
+   the window follows the text cursor across the multiple displays.
+   The D-Bus layer client exercises the panel pre-edit with
+   IBUS_MACOS_CLIENT_PANEL_PREEDIT=1 and keeps the composition on
+   the panel with IBUS_MACOS_CLIENT_NO_RETURN=1 (the Return key of
+   the client commits the raw input in rime otherwise).
 
  * `ibus-xpc-bridge` (`client/xpc/`) - the XPC bridge for the
    sandboxed clients, e.g. the Input Method Kit (IMK) input methods

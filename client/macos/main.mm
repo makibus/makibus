@@ -347,8 +347,11 @@ _process_line (const gchar *line)
         _send_unichar (ch);
         p = g_utf8_next_char (p);
     }
-    /* Return commits the pre-edit text in the engine. */
-    _send_unichar ('\n');
+    /* Return commits the pre-edit text in the engine, except in the
+     * panel pre-edit mode where the composition is kept on the
+     * panel for the inspection (IBUS_MACOS_CLIENT_NO_RETURN=1). */
+    if (g_getenv ("IBUS_MACOS_CLIENT_NO_RETURN") == NULL)
+        _send_unichar ('\n');
 }
 
 static gboolean
@@ -402,17 +405,24 @@ _bus_connected_cb (IBusBus *bus,
 
     /* Do not declare IBUS_CAP_LOOKUP_TABLE nor
      * IBUS_CAP_AUXILIARY_TEXT so that the ibus-daemon forwards the
-     * candidates and the auxiliary texts to the panel, which is the
-     * behavior to verify with this client; the daemon logs the
-     * lookup tables of the panel with the -v verbose option. */
-    ibus_input_context_set_capabilities (
-            _context,
-            IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT);
+     * candidates and the auxiliary texts to the panel.  With
+     * IBUS_MACOS_CLIENT_PANEL_PREEDIT=1 also drop
+     * IBUS_CAP_PREEDIT_TEXT, so the composition is forwarded to the
+     * panel too and rendered in the candidate window header. */
+    int caps = IBUS_CAP_FOCUS;
+    if (g_getenv ("IBUS_MACOS_CLIENT_PANEL_PREEDIT") == NULL)
+        caps |= IBUS_CAP_PREEDIT_TEXT;
+    ibus_input_context_set_capabilities (_context, caps);
     /* ibus-daemon runs in the global engine mode by default and the
      * per-context SetEngine is rejected there.  Assign the global
      * engine instead and the focused input context will use it. */
     ibus_bus_set_global_engine (_bus, _engine_name);
     ibus_input_context_focus_in (_context);
+
+    /* Wait for the asynchronous engine spawn and binding on the
+     * daemon side, like the XPC test client, before the buffered
+     * keys are replayed. */
+    sleep (2);
 
     g_print ("Type characters followed by Enter to send them to the "
              "current engine, or type \"quit\" to exit.\n");
