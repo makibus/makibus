@@ -312,6 +312,40 @@ upgraded installations which were registered on earlier releases.
 The registration tool is kept in place for the Developer ID
 distributions and for when the system behavior is clarified.
 
+## Real engines: ibus-rime
+
+The real ibus engines work without any change of this port since
+they only talk to the ibus-daemon.  ibus-rime was verified with the
+upstream base:
+
+```sh
+brew install librime
+git clone --depth 1 https://github.com/rime/ibus-rime
+cmake -B build -S ibus-rime \
+    -DCMAKE_INSTALL_PREFIX=<ibus-prefix> \
+    -DRIME_DATA_DIR=<ibus-prefix>/share/rime-data
+cmake --build build && cmake --install build
+
+# Minimum data set: rime-prelude, rime-luna-pinyin (with its
+# pinyin.yaml) and rime-essay (essay.txt) into share/rime-data;
+# pin the schema with ~/.config/ibus/rime/default.custom.yaml.
+```
+
+Then the engine shows up in the IMK engine menu and:
+
+```sh
+ibus-im --keys rime nihao
+```
+
+types 你好 through the whole chain: the pre-edit updates
+(ni -> 你 -> 你會 -> ... -> 你好) on the client and the native panel
+receives the lookup tables (6 candidates) through the ibus-daemon,
+which was the first real data flow of ibus-ui-macospanel.  Note
+that the panel must claim org.freedesktop.IBus.Panel on the ibus
+bus (ibus_bus_request_name in main.mm); without the claim the
+daemon never builds the panel proxy and the lookup tables are
+dropped silently.
+
 ## Known issues
 
  * The `/ibus/async-apis` test in `ibus-bus` can be flaky on macOS

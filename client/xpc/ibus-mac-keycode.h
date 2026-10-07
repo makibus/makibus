@@ -171,4 +171,39 @@ ibus_mac_keycode_to_xkb (uint32_t mac_keycode)
     return ibus_mac_to_xkb_keycode[mac_keycode];
 }
 
+/* The XKB keycode of an ASCII character, for the test clients which
+ * synthesize the key events from the plain text. */
+static inline uint32_t
+ibus_keycode_for_ascii (char ch)
+{
+    switch (ch) {
+    case 'a': return 38;   case 's': return 39;
+    case 'd': return 40;   case 'f': return 41;
+    case 'h': return 43;   case 'g': return 42;
+    case 'z': return 52;   case 'x': return 53;
+    case 'c': return 54;   case 'v': return 55;
+    case 'b': return 56;   case 'q': return 24;
+    case 'w': return 25;   case 'e': return 26;
+    case 'r': return 27;   case 'y': return 29;
+    case 't': return 28;   case '1': return 10;
+    case '2': return 11;   case '3': return 12;
+    case '4': return 13;   case '6': return 15;
+    case '5': return 14;   case '=': return 21;
+    case '9': return 18;   case '7': return 16;
+    case '-': return 20;   case '8': return 17;
+    case '0': return 19;   case ']': return 35;
+    case 'o': return 32;   case 'u': return 30;
+    case '[': return 34;   case 'i': return 31;
+    case 'p': return 33;   case '\n': return 36;
+    case 'l': return 46;   case 'j': return 44;
+    case '\'': return 48; case 'k': return 45;
+    case ';': return 47;   case '\\': return 51;
+    case ',': return 59;   case '/': return 61;
+    case 'n': return 57;   case 'm': return 58;
+    case '.': return 60;   case '\t': return 23;
+    case ' ': return 65;   case '`': return 49;
+    default: return 0;
+    }
+}
+
 #endif

@@ -32,6 +32,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
+#include <stdio.h>
 
 static IBusBus *_bus = NULL;
 static IBusPanelService *_panel = NULL;
@@ -314,8 +315,14 @@ _update_lookup_table_cb (IBusPanelService *panel,
                          gboolean          visible,
                          gpointer          user_data)
 {
-    if (visible && table != NULL)
+    if (visible && table != NULL) {
+        guint n = ibus_lookup_table_get_number_of_candidates (table);
+        IBusText *first = n > 0 ?
+                ibus_lookup_table_get_candidate (table, 0) : NULL;
+        g_debug ("lookup table: %u candidates, first: \"%s\"",
+                 n, first ? first->text : "");
         _show_lookup_table (table);
+    }
     else
         [_candidate_window hide];
 }
@@ -398,6 +405,16 @@ _register_panel_service (void)
     GDBusConnection *connection = ibus_bus_get_connection (_bus);
     if (connection == NULL)
         return;
+
+    /* The daemon builds the panel proxy when the panel component
+     * claims the component name on the ibus bus, like the engines
+     * claim their component names. */
+    if (!ibus_bus_request_name (_bus, IBUS_SERVICE_PANEL,
+                                IBUS_BUS_NAME_FLAG_REPLACE_EXISTING)) {
+        g_printerr ("ibus-ui-macospanel: cannot claim %s\n",
+                    IBUS_SERVICE_PANEL);
+        return;
+    }
 
     _panel = ibus_panel_service_new (connection);
     g_object_ref_sink (_panel);

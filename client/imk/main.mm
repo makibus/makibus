@@ -216,6 +216,97 @@ _run_selftest (void)
     return got_commit ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+/* Send the plain ASCII keys to the given engine and print the
+ * engine outputs; used with the real engines, e.g.:
+ *   ibus-im --keys rime nihao
+ */
+static int
+_run_keys (const char *engine_name, const char *keys)
+{
+    printf ("ibus-im: engine \"%s\", keys \"%s\"\n",
+            engine_name, keys);
+    IBusXpcClient *client = [IBusXpcClient sharedClient];
+
+    __block BOOL got_output = NO;
+    dispatch_semaphore_t output_seen = dispatch_semaphore_create (0);
+    IBusSelftestOutput *output = [[IBusSelftestOutput alloc] init];
+    output.commitHandler = ^(NSString *text) {
+        printf (">>> COMMIT: \"%s\"\n", text.UTF8String);
+        got_output = YES;
+        dispatch_semaphore_signal (output_seen);
+    };
+    output.preeditHandler = ^(NSString *text) {
+        printf (">>> PREEDIT: \"%s\"\n", text.UTF8String);
+        got_output = YES;
+    };
+    client.delegate = output;
+
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:10];
+    while (![client contextReady] && [deadline timeIntervalSinceNow] > 0) {
+        [[NSRunLoop currentRunLoop]
+                runMode:NSDefaultRunLoopMode
+             beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+    }
+    if (![client contextReady]) {
+        printf ("cannot create the input context\n");
+        return EXIT_FAILURE;
+    }
+
+    [client focusIn];
+    [[client context] setGlobalEngine:@(engine_name)
+                                 reply:^(BOOL ok, NSString *error) {
+        if (!ok)
+            printf ("setGlobalEngine failed: %s\n", error.UTF8String);
+        dispatch_semaphore_signal (output_seen);
+    }];
+    /* Wait for the asynchronous engine spawn and binding on the
+     * daemon side before the first key, then re-focus so that the
+     * panel proxy, which may have connected after the first focus,
+     * tracks this input context for the lookup table forwarding. */
+    sleep (2);
+
+    dispatch_async (
+            dispatch_get_global_queue (DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+            ^{
+        for (const char *p = keys; *p != '\0'; p++) {
+            const uint32_t keyval = (uint32_t) *p;
+            const uint32_t keycode = ibus_keycode_for_ascii (*p);
+            dispatch_semaphore_t done = dispatch_semaphore_create (0);
+            [client processKeyEventKeyval:keyval
+                                  keycode:keycode
+                                    state:0
+                                     reply:^(BOOL handled) {
+                printf ("key '%c' handled: %d\n", *p, handled);
+                dispatch_semaphore_signal (done);
+            }];
+            dispatch_semaphore_wait (done,
+                    dispatch_time (DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+            [client processKeyEventKeyval:keyval
+                                  keycode:keycode
+                                    state:IBUS_RELEASE_MASK
+                                   reply:^(BOOL handled) {}];
+            usleep (100000);
+        }
+        /* Give the engine a moment for the outputs. */
+        sleep (1);
+        dispatch_semaphore_signal (output_seen);
+    });
+
+    NSDate *finish = [NSDate dateWithTimeIntervalSinceNow:15];
+    while ([finish timeIntervalSinceNow] > 0) {
+        [[NSRunLoop currentRunLoop]
+                runMode:NSDefaultRunLoopMode
+             beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
+        /* Commit any pending preedit with the Return key? Not for
+         * rime: the preedit stays until a selection. */
+        if (got_output)
+            continue;
+    }
+    printf (got_output ? "engine produced output\n"
+                       : "no engine output\n");
+    return got_output ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int
 main (int    argc,
       char **argv)
@@ -223,6 +314,11 @@ main (int    argc,
     @autoreleasepool {
         if (argc > 1 && strcmp (argv[1], "--selftest") == 0)
             return _run_selftest ();
+        if (argc > 1 && strcmp (argv[1], "--keys") == 0) {
+            const char *engine = argc > 2 ? argv[2] : "xkb:us::eng";
+            const char *keys = argc > 3 ? argv[3] : "";
+            return _run_keys (engine, keys);
+        }
 
         /* The connection name must match the
          * InputMethodConnectionName of the Info.plist, which the
