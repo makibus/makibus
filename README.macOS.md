@@ -17,7 +17,15 @@ native components are added for macOS:
    window panel which implements the `org.freedesktop.IBus.Panel`
    D-Bus service with `IBusPanelService` and renders the candidates
    with AppKit.  It replaces the GTK3 panel, which can be built back
-   with `-Dmacospanel=false`.
+   with `-Dmacospanel=false`.  The interactions follow the native
+   input method panels: the lookup table orientation of the engine
+   is honored and `IBUS_MACOSPANEL_VERTICAL=1` forces the vertical
+   layout for the engines which do not set it (e.g. ibus-rime), the
+   mouse wheel turns the pages (PageUp/PageDown back to the daemon),
+   the candidates are highlighted on hover and on click
+   (CandidateClicked), the page number is shown with multiple pages,
+   the auxiliary text is rendered in the footer, and the window
+   follows the text cursor across the multiple displays.
 
  * `ibus-xpc-bridge` (`client/xpc/`) - the XPC bridge for the
    sandboxed clients, e.g. the Input Method Kit (IMK) input methods

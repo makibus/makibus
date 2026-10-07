@@ -98,7 +98,7 @@ rm -rf "$HOME/.config/ibus/bus"
 export DBUS_SESSION_BUS_ADDRESS=$(mkdir -p /tmp/ibus-test-session && \
         dbus-daemon --session --fork --print-address=1 \
                 --address=unix:tmpdir=/tmp/ibus-test-session)
-G_MESSAGES_DEBUG=all "$PREFIX/bin/ibus-daemon" --replace -v > "$LOG" 2>&1 &
+G_MESSAGES_DEBUG=all IBUS_MACOSPANEL_VERTICAL=1 "$PREFIX/bin/ibus-daemon" --replace -v > "$LOG" 2>&1 &
 sleep 5
 
 echo "The daemon is running (log: $LOG, address file: default)."
