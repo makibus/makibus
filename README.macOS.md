@@ -205,6 +205,14 @@ The stack can be tested layer by layer, without the higher layers:
   the screen with CGWindowListCopyWindowInfo filtered by the panel
   pid while the candidates are visible.
 
+macos/test-env.sh sets up the whole layered environment in a
+self-contained prefix (the upstream base, ibus-rime with the Homebrew
+librime, the rime data and the panel component), starts the daemon
+and prints the commands of each layer.  The environment is
+idempotent and the panel component is generated with the resolved
+paths instead of being patched from an installed template, whose
+placeholders may already be filled.
+
 ## Distribute the macOS integration package
 
 The macOS integration ships as a single package which is independent

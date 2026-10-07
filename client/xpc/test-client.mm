@@ -121,8 +121,14 @@ _run_keys (const char *engine_name, const char *keys)
                     error.UTF8String);
     }];
     [ic focusIn];
-    /* Wait for the asynchronous engine spawn and binding. */
+    /* Wait for the asynchronous engine spawn and binding, and for
+     * the panel proxy to focus the input context. */
     sleep (2);
+    /* The cursor location must be reported after the panel focuses
+     * the input context: the ibus-daemon does not replay it on the
+     * panel FocusIn (only the content type), so an early report is
+     * dropped and the candidate window would fall back to (0, 0). */
+    [ic setCursorLocationX:100 y:100 width:10 height:16];
 
     __block BOOL got_output = NO;
     for (const char *p = keys; *p != '\0'; p++) {
@@ -222,6 +228,9 @@ main (int    argc,
                         error.UTF8String);
         }];
         [ic focusIn];
+        /* Let the panel proxy focus the input context before the
+         * cursor report; see the comment in _run_keys. */
+        sleep (2);
         [ic setCursorLocationX:100 y:100 width:10 height:16];
 
         /* Ctrl+Shift+U, "4", "1", Space commits U+0041 'A'. */
