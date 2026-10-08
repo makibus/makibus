@@ -24,14 +24,14 @@
 #                        the data does not exist
 #
 # Usage: macos/build-upstream.sh [ref] [prefix]
-#   ref     the upstream git ref; the default is master
+#   ref     the upstream git ref; the default is main
 #   prefix  the install prefix; the default is $HOME/.local/ibus
 
 set -e
 
-REF="${1:-master}"
+REF="${1:-main}"
 PREFIX="${2:-$HOME/.local/ibus}"
-SRC="${TMPDIR:-/tmp}/ibus-upstream-src-$REF"
+SRC="${TMPDIR:-/tmp}/ibus-upstream-src"
 
 if [ ! -d "$SRC" ]; then
     echo "Cloning the upstream ibus ($REF)"
@@ -51,6 +51,9 @@ if [ -n "$ATSPI_PC" ]; then
 fi
 
 cd "$SRC"
+# The build tree of a persistent clone is reused; meson setup refuses
+# to run twice, so only configure a fresh tree.
+if [ ! -f build/build.ninja ]; then
 meson setup build \
     -Dtests=false \
     -Dgtk-doc=false \
@@ -62,6 +65,7 @@ meson setup build \
     -Dunicode-dict=false \
     -Dx11-localedata-dir="$(brew --prefix)/share/X11/locale" \
     --prefix="$PREFIX"
+fi
 ninja -C build install
 
 cat <<EOF

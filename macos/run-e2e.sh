@@ -32,9 +32,14 @@ cleanup () {
     pkill -f "$BASE/bin/ibus-daemon" 2>/dev/null || true
     for p in ibus-engine-rime ibus-engine-simple ibus-engine-libpinyin \
              ibus-memconf ibus-ui-macospanel ibus-macos-client \
-             ibus-xpc-test-client; do
+             ibus-xpc-test-client ibus-xpc-bridge; do
         pkill -f "$p" 2>/dev/null || true
     done
+    if [ -n "$BRIDGE_PLIST" ] && [ -f "$BRIDGE_PLIST" ]; then
+        launchctl bootout "gui/$(id -u)/org.freedesktop.IBus.xpc.e2e" \
+                >/dev/null 2>&1 || true
+        rm -f "$BRIDGE_PLIST"
+    fi
     rm -rf "$HOME/.config/ibus/bus" "$LOG_DIR/ibus-session" || true
 }
 trap cleanup EXIT
@@ -61,7 +66,25 @@ job_env () {
     IBUS_TEST_LOG="$DAEMON_LOG" \
             sh "$ROOT/macos/test-env.sh" "$BASE" \
                     "$PREFIX/libexec/ibus-ui-macospanel" >/dev/null
-    # the setup is only complete when the daemon is running
+
+    # Bootstrap the XPC bridge with a temporary LaunchAgent; the
+    # machines without the installed integration package have no
+    # /Library/LaunchAgents entry for it.
+    # The clients connect to the well-known org.freedesktop.IBus.xpc
+    # name; take it over from any installed agent for this session.
+    BRIDGE_PLIST="$HOME/Library/LaunchAgents/org.freedesktop.IBus.xpc.e2e.plist"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    sed -e "s|@libexecdir@/ibus-xpc-bridge|$PREFIX/libexec/ibus-xpc-bridge|" \
+            "$PREFIX/share/ibus/org.freedesktop.IBus.xpc.plist" \
+            > "$BRIDGE_PLIST"
+    for svc in org.freedesktop.IBus.xpc.e2e org.freedesktop.IBus.xpc; do
+        launchctl bootout "gui/$(id -u)/$svc" >/dev/null 2>&1 || true
+    done
+    pkill -f ibus-xpc-bridge >/dev/null 2>&1 || true
+    launchctl bootstrap "gui/$(id -u)" "$BRIDGE_PLIST" \
+            >/dev/null 2>&1 || true
+
+    # the setup is only complete when the daemon runs
     sleep 1
     pgrep -f "$BASE/bin/ibus-daemon" > /dev/null
 }
