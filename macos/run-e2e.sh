@@ -136,13 +136,21 @@ job_dbus_rime () {
 }
 
 # ---------------------------------------------------------------- layer 5
+job_properties () {
+    printf '==> properties\n'
+    # The engine registers its properties (the rime InputMode /
+    # deploy / sync) and the panel renders the status item.
+    grep -q 'register properties: 3 items' "$DAEMON_LOG" &&
+    grep -q 'status item updated' "$DAEMON_LOG"
+}
+
 job_panel () {
     printf '==> panel\n'
     grep -q 'focus in' "$DAEMON_LOG" &&
     grep -q 'lookup table' "$DAEMON_LOG"
 }
 
-ALL_JOBS="build env conversion xpc_hex xpc_rime dbus_rime panel"
+ALL_JOBS="build env conversion xpc_hex xpc_rime dbus_rime properties panel"
 JOBS="${*:-$ALL_JOBS}"
 
 FAILED=0

@@ -51,6 +51,10 @@ static NSApplication *_app = NULL;
  * bottom-left based coordinates when the candidates are shown. */
 static NSRect _cursor_rect = { .origin = { 0, 0 }, .size = { 0, 0 } };
 
+/* The last property list of the engine (e.g. the InputMode /
+ * deploy / sync properties of rime), rendered in the menu bar. */
+static IBusPropList *_props = NULL;
+
 /* The last lookup table, the auxiliary text and the pre-edit text,
  * kept for the partial updates: the engines send them as the
  * separate signals and the window renders them together. */
@@ -547,6 +551,102 @@ static void _rerender (void);
 
 static CandidateWindow *_candidate_window = nil;
 
+#pragma mark Menu bar properties
+
+/* The menu bar item of the input method: the title follows the
+ * symbol of the first property (e.g. 中 / A of the rime InputMode)
+ * and the menu lists the engine properties; activating an item
+ * sends the PropertyActivate signal back to the ibus-daemon. */
+@interface IBusStatusItem : NSObject
+- (void)updateWithPropList:(IBusPropList *)prop_list;
+@end
+
+@implementation IBusStatusItem {
+    NSStatusItem *_status_item;
+    NSMenu *_menu;
+}
+
+- (NSString *)_stringOfText:(IBusText *)text
+                 fallback:(NSString *)fallback
+{
+    if (text == NULL || text->text[0] == '\0')
+        return fallback;
+    return [NSString stringWithUTF8String:text->text];
+}
+
+- (IBAction)_activate:(NSMenuItem *)item
+{
+    NSString *key = item.representedObject;
+    if (key != nil && _panel != NULL)
+        ibus_panel_service_property_activate (_panel,
+                                              key.UTF8String,
+                                              PROP_STATE_UNCHECKED);
+}
+
+- (void)updateWithPropList:(IBusPropList *)prop_list
+{
+    if (_status_item == nil) {
+        _status_item = [[NSStatusBar systemStatusBar]
+                statusItemWithLength:NSVariableStatusItemLength];
+        _menu = [[NSMenu alloc] initWithTitle:@"IBus"];
+        _menu.autoenablesItems = NO;
+    }
+
+    /* The title shows the symbol of the first property; rime keeps
+     * the current mode (中 / A) in the InputMode symbol. */
+    NSString *title = @"iB";
+    [_menu removeAllItems];
+
+    if (prop_list != NULL && prop_list->properties != NULL) {
+        guint n = prop_list->properties->len;
+        for (guint i = 0; i < n; i++) {
+            IBusProperty *prop = ibus_prop_list_get (prop_list, i);
+            const gchar *key = ibus_property_get_key (prop);
+            IBusPropType type = ibus_property_get_prop_type (prop);
+
+            if (type == PROP_TYPE_SEPARATOR) {
+                [_menu addItem:[NSMenuItem separatorItem]];
+                continue;
+            }
+            NSString *label =
+                    [self _stringOfText:ibus_property_get_label (prop)
+                              fallback:(key != NULL) ?
+                                      @(key) : @""];
+            if (i == 0) {
+                NSString *symbol =
+                        [self _stringOfText:ibus_property_get_symbol (prop)
+                                  fallback:label];
+                if (symbol.length > 0)
+                    title = symbol;
+            }
+            NSMenuItem *item =
+                    [_menu addItemWithTitle:label
+                                     action:@selector (_activate:)
+                              keyEquivalent:@""];
+            item.target = self;
+            item.enabled = (type != PROP_TYPE_SEPARATOR);
+            item.representedObject =
+                    (key != NULL) ? @(key) : nil;
+            if (type == PROP_TYPE_TOGGLE ||
+                type == PROP_TYPE_RADIO) {
+                item.state = (ibus_property_get_state (prop) ==
+                        PROP_STATE_CHECKED) ?
+                        NSControlStateValueOn :
+                        NSControlStateValueOff;
+            }
+        }
+    }
+
+    _status_item.button.title = title;
+    _status_item.menu = _menu;
+    g_debug ("status item updated: \"%s\", %lu items",
+             title.UTF8String, (unsigned long) _menu.numberOfItems);
+}
+
+@end
+
+static IBusStatusItem *_status_item = nil;
+
 #pragma mark Panel service callbacks
 
 static void
@@ -748,6 +848,40 @@ _update_auxiliary_text_cb (IBusPanelService *panel,
 }
 
 static void
+_register_properties_cb (IBusPanelService *panel,
+                         IBusPropList     *prop_list,
+                         gpointer          user_data)
+{
+    g_debug ("register properties: %u items",
+             prop_list->properties ? prop_list->properties->len : 0);
+    g_clear_object (&_props);
+    _props = (IBusPropList *) g_object_ref_sink (prop_list);
+    [_status_item updateWithPropList:_props];
+}
+
+static void
+_update_property_cb (IBusPanelService *panel,
+                     IBusProperty     *prop,
+                     gpointer          user_data)
+{
+    /* The engines update one property at a time (e.g. the InputMode
+     * symbol on the Chinese/Western switch); merge it into the
+     * cached list by the key. */
+    if (_props == NULL)
+        return;
+    const gchar *key = ibus_property_get_key (prop);
+    guint n = _props->properties->len;
+    for (guint i = 0; i < n; i++) {
+        IBusProperty *cached = ibus_prop_list_get (_props, i);
+        if (g_strcmp0 (ibus_property_get_key (cached), key) == 0) {
+            ibus_prop_list_update_property (_props, prop);
+            break;
+        }
+    }
+    [_status_item updateWithPropList:_props];
+}
+
+static void
 _focus_in_cb (IBusPanelService *panel,
               const gchar      *input_context_path,
               gpointer          user_data)
@@ -804,6 +938,10 @@ _register_panel_service (void)
                       G_CALLBACK (_set_cursor_location_cb), NULL);
     g_signal_connect (_panel, "update-auxiliary-text",
                       G_CALLBACK (_update_auxiliary_text_cb), NULL);
+    g_signal_connect (_panel, "register-properties",
+                      G_CALLBACK (_register_properties_cb), NULL);
+    g_signal_connect (_panel, "update-property",
+                      G_CALLBACK (_update_property_cb), NULL);
     g_signal_connect (_panel, "update-preedit-text",
                       G_CALLBACK (_update_preedit_text_cb), NULL);
     g_signal_connect (_panel, "show-preedit-text",
@@ -864,6 +1002,7 @@ main (int    argc,
                           G_CALLBACK (_bus_disconnected_cb), NULL);
 
         _candidate_window = [[CandidateWindow alloc] init];
+        _status_item = [[IBusStatusItem alloc] init];
 
         CFRunLoopTimerContext context = { 0, NULL, NULL, NULL, NULL };
         CFRunLoopTimerRef timer = CFRunLoopTimerCreate (

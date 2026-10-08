@@ -24,7 +24,11 @@ native components are added for macOS:
    mouse wheel turns the pages (PageUp/PageDown back to the daemon),
    the candidates are highlighted on hover and on click
    (CandidateClicked), the page number is shown with multiple pages,
-   the auxiliary text is rendered in the footer, the panel-side
+   the engine properties (e.g. the InputMode / deploy / sync of
+   rime) are rendered in a menu bar status item whose title follows
+   the property symbol (中 / A) and whose items send the
+   PropertyActivate signals back to the ibus-daemon, the auxiliary
+   text is rendered in the footer, the panel-side
    pre-edit text (the composition of the clients without the inline
    pre-edit, or with the embed-preedit-text config disabled) is
    rendered in the header with the caret at the pre-edit cursor, and
