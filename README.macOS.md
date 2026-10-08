@@ -441,6 +441,15 @@ bus (ibus_bus_request_name in main.mm); without the claim the
 daemon never builds the panel proxy and the lookup tables are
 dropped silently.
 
+### XPC protocol version
+
+The IBusXpcInputContext protocol declares
+IBUS_XPC_PROTOCOL_VERSION and the bridge answers a
+protocolVersionWithReply call with its build-time revision; the IMK
+client checks it on connect and invalidates the connection on a
+mismatch with a log line, instead of failing on the individual
+selector mismatches.
+
 ## Known issues
 
  * The `/ibus/async-apis` test in `ibus-bus` can be flaky on macOS

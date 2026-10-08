@@ -33,6 +33,10 @@
  * (kVK_ANSI_*) plus 8, and the modifiers follow the ibus convention,
  * e.g. IBUS_SHIFT_MASK | IBUS_CONTROL_MASK. */
 @protocol IBusXpcInputContext <NSObject>
+/* The protocol revision of the bridge (IBUS_XPC_PROTOCOL_VERSION at
+ * the build time of the bridge); the clients verify it before the
+ * first use. */
+- (void)protocolVersionWithReply:(void (^)(NSUInteger version))reply;
 /* Create an ibus input context for this connection. */
 - (void)createInputContextWithName:(NSString *)name
                              reply:(void (^)(BOOL ok,
@@ -62,6 +66,11 @@
         NSString *, NSString *> *> * _Nullable engines))reply;
 - (void)reset;
 @end
+
+/* The protocol revision of the XPC bridge interface; the clients
+ * check it on connect and refuse to run against an incompatible
+ * bridge (the selectors of the whole interface must match). */
+#define IBUS_XPC_PROTOCOL_VERSION 1
 
 /* The protocol which the clients export to receive the engine
  * outputs. */

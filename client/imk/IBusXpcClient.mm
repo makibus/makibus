@@ -82,6 +82,23 @@
         });
     };
     [_connection resume];
+
+    /* Verify the protocol revision of the bridge before the first
+     * use: a version mismatch means the selectors of the interface
+     * may not match and the calls would fail in unpredictable
+     * ways. */
+    [[(NSXPCConnection *) _connection
+            remoteObjectProxyWithErrorHandler:^(NSError *error) {
+        NSLog (@"ibus: bridge protocol check failed: %@", error);
+    }] protocolVersionWithReply:^(NSUInteger version) {
+        if (version != IBUS_XPC_PROTOCOL_VERSION) {
+            NSLog (@"ibus: bridge protocol mismatch: client %lu, "
+                   @"bridge %lu; update the integration package.",
+                   (unsigned long) IBUS_XPC_PROTOCOL_VERSION,
+                   (unsigned long) version);
+            [(NSXPCConnection *) _connection invalidate];
+        }
+    }];
 }
 
 - (BOOL)contextReady

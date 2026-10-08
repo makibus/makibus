@@ -141,6 +141,11 @@ _flush_pending_on_connect (void)
     }
 }
 
+- (void)protocolVersionWithReply:(void (^)(NSUInteger))reply
+{
+    reply (IBUS_XPC_PROTOCOL_VERSION);
+}
+
 - (void)createInputContextWithName:(NSString *)name
                              reply:(void (^)(BOOL,
                                              NSString * _Nullable))reply

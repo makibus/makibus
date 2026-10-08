@@ -87,7 +87,12 @@ static NSUInteger _last_modifier_flags = 0;
     uint32_t keycode = ibus_mac_keycode_to_xkb (event.keyCode);
     NSUInteger state = ibus_state_from_modifier_flags (
             event.modifierFlags, NO);
-    if (keyval == 0 && keycode == 0)
+    /* The dead keys of the macOS layouts (e.g. Option+E) deliver an
+     * empty characters string, which leaves keyval 0 while keycode
+     * still names the physical key; sending such an event would
+     * reach the engine with IBUS_KEY_VoidSymbol.  Pass the event to
+     * the application, which composes the dead keys natively. */
+    if (keyval == 0)
         return NO;
 
     __block BOOL result = NO;
@@ -108,12 +113,18 @@ static NSUInteger _last_modifier_flags = 0;
             dispatch_time (DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
 
     /* IMK does not deliver the key up events; send the release
-     * asynchronously right after the press like the test clients. */
-    [[IBusXpcClient sharedClient]
-            processKeyEventKeyval:keyval
-                          keycode:keycode
-                            state:state | IBUS_RELEASE_MASK
-                           reply:^(BOOL handled) {}];
+     * asynchronously right after the press like the test clients.
+     * The autorepeat events are additional presses of an already
+     * pressed key: only the first press gets the synthetic release
+     * so that the engine sees one press-release pair per physical
+     * keystroke instead of one pair per repeat. */
+    if (!event.isARepeat) {
+        [[IBusXpcClient sharedClient]
+                processKeyEventKeyval:keyval
+                              keycode:keycode
+                                state:state | IBUS_RELEASE_MASK
+                               reply:^(BOOL handled) {}];
+    }
 
     if (result)
         [self _updateCursorLocation];
