@@ -49,13 +49,19 @@ if [ ! -x "$PREFIX/bin/ibus-daemon" ]; then
     "$ROOT/macos/build-upstream.sh" master "$PREFIX"
 fi
 
+# The Homebrew at-spi2-core provides atk.pc in the Cellar directory
+# only (globs do not expand inside the quoted environment below).
+ATK_PC_DIR=$(ls -d /opt/homebrew/Cellar/at-spi2-core/*/lib/pkgconfig 2>/dev/null |
+        head -1)
+
 # ibus-rime with the Homebrew librime
 if [ ! -x "$PREFIX/libexec/ibus-rime/ibus-engine-rime" ]; then
     SRC="${TMPDIR:-/tmp}/ibus-rime-src"
     [ -d "$SRC" ] || git clone --depth 1 \
             https://github.com/rime/ibus-rime.git "$SRC"
     (cd "$SRC" && \
-     PKG_CONFIG_PATH="/opt/homebrew/Cellar/at-spi2-core/*/lib/pkgconfig:$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
+     [ -n "$ATK_PC_DIR" ] && \
+     PKG_CONFIG_PATH="$ATK_PC_DIR:$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
      cmake -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" \
             -DRIME_DATA_DIR="$DATA_DIR" >/dev/null && \
      cmake --build build >/dev/null && cmake --install build >/dev/null)
@@ -122,7 +128,10 @@ fi
 if [ -f "$PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
     export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
 fi
-G_MESSAGES_DEBUG=IBUS IBUS_MACOSPANEL_VERTICAL=1 "$PREFIX/bin/ibus-daemon" --replace -v > "$LOG" 2>&1 &
+# IBUS_ENABLE_CTRL_SHIFT_U enables the hex compose sequence of the
+# simple engine, which the hex compose round-trip test uses.
+G_MESSAGES_DEBUG=IBUS IBUS_MACOSPANEL_VERTICAL=1 \
+IBUS_ENABLE_CTRL_SHIFT_U=1 "$PREFIX/bin/ibus-daemon" --replace -v > "$LOG" 2>&1 &
 sleep 5
 
 echo "The daemon is running (log: $LOG, address file: default)."

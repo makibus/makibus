@@ -1,0 +1,51 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [ macos-support, macos-port ]
+  pull_request:
+    branches: [ macos-support ]
+
+jobs:
+  integration:
+    name: Integration e2e (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ macos-15, macos-26 ]
+
+    permissions:
+      contents: read
+
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install the build dependencies
+        run: |
+          brew install meson ninja pkg-config \
+                  glib dbus vala libnotify gtk+3 gtk4 iso-codes \
+                  xkeyboard-config libx11 gobject-introspection \
+                  pygobject3 at-spi2-core gettext librime \
+                  libpinyin berkeley-db cmake autoconf automake libtool
+          # The Homebrew at-spi2-core provides atk.pc in the Cellar
+          # directory only.
+          ATK_PC_DIR=$(ls -d /opt/homebrew/Cellar/at-spi2-core/*/lib/pkgconfig | head -1)
+          echo "PKG_CONFIG_PATH=$ATK_PC_DIR" >> "$GITHUB_ENV"
+
+      - name: Build and run the layered e2e tests
+        run: |
+          sh macos/run-e2e.sh
+
+      - name: Upload the test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.runner }}
+          path: |
+            build-e2e/meson-logs/meson-log.txt
+            ${{ env.TMPDIR }}ibus-e2e/
+          if-no-files-found: ignore

@@ -223,7 +223,16 @@ The stack can be tested layer by layer, without the higher layers:
 macos/test-env.sh sets up the whole layered environment in a
 self-contained prefix (the upstream base, ibus-rime with the Homebrew
 librime, the rime data and the panel component), starts the daemon
-and prints the commands of each layer.  The environment is
+and prints the commands of each layer.
+
+macos/run-e2e.sh runs everything in one shot: it builds the
+integration from the source, prepares the environment and runs the
+jobs layer by layer (build, environment, conversion, xpc-hex,
+xpc-rime, dbus-rime, panel), each printing PASS/FAIL; the exit code
+is non-zero on any failure.  Individual jobs can be selected as the
+arguments.  The GitHub Actions workflow in
+.github/workflows/macos.yml runs the same script on the macOS
+runners on every push to macos-support.  The environment is
 idempotent and the panel component is generated with the resolved
 paths instead of being patched from an installed template, whose
 placeholders may already be filled.
