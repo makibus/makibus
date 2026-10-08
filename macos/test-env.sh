@@ -75,10 +75,10 @@ for repo in rime-prelude rime-luna-pinyin rime-essay; do
     [ -d "$SRC" ] || git clone --depth 1 \
             "https://github.com/rime/$repo.git" "$SRC"
 done
-cp /tmp/rime-prelude/*.yaml "$DATA_DIR/"
-cp /tmp/rime-luna-pinyin/luna_pinyin*.yaml /tmp/rime-luna-pinyin/pinyin.yaml \
-        "$DATA_DIR/"
-cp /tmp/rime-essay/essay.txt "$DATA_DIR/"
+cp "${TMPDIR:-/tmp}/rime-prelude/"*.yaml "$DATA_DIR/"
+cp "${TMPDIR:-/tmp}/rime-luna-pinyin/"luna_pinyin*.yaml \
+        "${TMPDIR:-/tmp}/rime-luna-pinyin/pinyin.yaml" "$DATA_DIR/"
+cp "${TMPDIR:-/tmp}/rime-essay/essay.txt" "$DATA_DIR/"
 mkdir -p "$HOME/.config/ibus/rime"
 if [ ! -f "$HOME/.config/ibus/rime/default.custom.yaml" ]; then
     cat > "$HOME/.config/ibus/rime/default.custom.yaml" <<'EOF'

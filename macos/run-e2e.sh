@@ -101,7 +101,7 @@ job_dbus_rime () {
     ( sleep 40; pkill -f ibus-macos-client 2>/dev/null ) &
     local guard=$!
     wait $driver 2>/dev/null
-    kill $guard 2>/dev/null 2>&1 || true
+    kill $guard >/dev/null 2>&1 || true
     pkill -f ibus-macos-client 2>/dev/null || true
     grep -q '你好' "$LOG_DIR/dbus-rime.out"
 }
