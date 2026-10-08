@@ -106,6 +106,12 @@ job_xpc_hex () {
 # ---------------------------------------------------------------- layer 3
 job_xpc_rime () {
     printf '==> xpc-rime\n'
+    # The first rime session on a fresh machine compiles the schemas
+    # (the essay dictionary is ~12MB), which exceeds the client's
+    # engine wait; warm it up with a throwaway run first.
+    "$PREFIX/libexec/ibus-xpc-test-client" --keys rime a >/dev/null 2>&1 ||
+            true
+    sleep 2
     "$PREFIX/libexec/ibus-xpc-test-client" --keys rime nihao 2>/dev/null |
             grep -q '你好'
 }
